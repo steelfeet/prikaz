@@ -161,6 +161,9 @@ try {
 $adminUsers = $adminStudents = $adminParents = $adminLessons = $adminProjects = $adminParentLinks = $adminAudit = [];
 $adminAcademicYears = [];
 $adminCurrentYear = null;
+$adminGroups = [];
+$adminGroupsFilterYear = 0;
+$defaultGroupYearId = 0;
 
 if ($viewRole === 'admin') {
     $adminUsers = $pdo->query(
@@ -193,5 +196,46 @@ if ($viewRole === 'admin') {
             $adminCurrentYear = $ay;
             break;
         }
+    }
+
+    // ===== Группы =====
+    // По умолчанию (без group_year в URL) — текущий учебный год.
+    // Явное group_year=0 — «Все».
+    if (isset($_GET['group_year'])) {
+        $adminGroupsFilterYear = (int) $_GET['group_year'];
+    } elseif ($adminCurrentYear !== null) {
+        $adminGroupsFilterYear = (int) $adminCurrentYear['id'];
+    } elseif ($adminAcademicYears !== []) {
+        $adminGroupsFilterYear = (int) $adminAcademicYears[0]['id'];
+    } else {
+        $adminGroupsFilterYear = 0;
+    }
+
+    $sql = 'SELECT g.*,
+                   ay.name AS year_name,
+                   ay.is_current AS year_is_current,
+                   ay.start_date AS year_start
+            FROM groups g
+            JOIN academic_years ay ON ay.id = g.academic_year_id';
+    $params = [];
+    if ($adminGroupsFilterYear > 0) {
+        $sql .= ' WHERE g.academic_year_id = :y';
+        $params[':y'] = $adminGroupsFilterYear;
+    }
+    $sql .= ' ORDER BY ay.start_date DESC, g.name';
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $adminGroups = $stmt->fetchAll();
+
+    // Значение по умолчанию для селекта «Учебный год» в форме создания:
+    //   — если включён фильтр, то отфильтрованный год;
+    //   — иначе текущий;
+    //   — иначе самый свежий из существующих.
+    if ($adminGroupsFilterYear > 0) {
+        $defaultGroupYearId = $adminGroupsFilterYear;
+    } elseif ($adminCurrentYear !== null) {
+        $defaultGroupYearId = (int) $adminCurrentYear['id'];
+    } elseif ($adminAcademicYears !== []) {
+        $defaultGroupYearId = (int) $adminAcademicYears[0]['id'];
     }
 }

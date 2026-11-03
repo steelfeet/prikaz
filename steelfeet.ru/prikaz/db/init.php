@@ -17,12 +17,10 @@ $configCandidates = [
     dirname(__DIR__, 3) . '/prikaz-data/config.php',
     dirname(__DIR__, 2) . '/../prikaz-data/config.php',
     dirname(__DIR__, 2) . '/prikaz-data/config.php',
-    // Резервные варианты — на случай, если проект развёрнут иначе
     dirname(__DIR__, 4) . '/prikaz-data/config.php',
     dirname(__DIR__, 3) . '/../prikaz-data/config.php',
 ];
 
-// Диагностика: что искали и что нашли
 $diagnostics = [];
 $configPath = '';
 foreach ($configCandidates as $cand) {
@@ -83,9 +81,6 @@ function init_foot(bool $isCli): void
     ?></body></html><?php
 }
 
-/**
- * Красиво выводит диагностику поиска config.php.
- */
 function init_print_config_diagnostics(array $diagnostics, bool $isCli): void
 {
     if ($isCli) {
@@ -109,9 +104,6 @@ function init_print_config_diagnostics(array $diagnostics, bool $isCli): void
     echo '</tbody></table>';
 }
 
-/**
- * Красиво выводит список ключей в прочитанном config.php.
- */
 function init_print_config_keys(array $cfg, bool $isCli): void
 {
     if ($isCli) {
@@ -162,14 +154,14 @@ function init_out(string $msg, bool $isCli): void
 }
 
 // =============================================================================
-// Если config.php не найден — сразу диагностика
+// Если config.php не найден
 // =============================================================================
 if ($configPath === '') {
     init_fail(
         "config.php не найден ни по одному из путей.\n\n"
         . "Положите файл в один из путей выше или задайте переменную окружения\n"
         . "PRIKAZ_CONFIG=/полный/путь/config.php.\n\n"
-        . "Если вы уверены, что файл существует — проверьте права на директорию:\n"
+        . "Если файл существует — проверьте права на директорию:\n"
         . "PHP-процесс должен иметь доступ на чтение (r-x) ко всем родительским папкам.",
         $isCli,
         1,
@@ -179,17 +171,12 @@ if ($configPath === '') {
     );
 }
 
-// =============================================================================
-// Загрузка и проверка config.php
-// =============================================================================
 $cfg = require $configPath;
 
 if (!is_array($cfg)) {
     init_fail(
         "Файл config.php найден, но не возвращает массив.\n\n"
-        . "Правильная структура:\n"
-        . "<?php\nreturn [ 'admin_login' => 'admin', ... ];\n\n"
-        . "Что вернул файл: " . gettype($cfg) . "\n\n"
+        . "Что вернул файл: " . gettype($cfg) . "\n"
         . "Найденный файл: {$configPath}",
         $isCli,
         1,
@@ -199,7 +186,6 @@ if (!is_array($cfg)) {
     );
 }
 
-// Проверяем обязательные ключи
 $requiredKeys = ['admin_login', 'admin_password', 'db_path'];
 $missingKeys = [];
 foreach ($requiredKeys as $k) {
@@ -219,9 +205,8 @@ if ($missingKeys !== []) {
         . "  'db_path'        => __DIR__ . '/prikaz.sqlite',\n\n"
         . "Возможные причины:\n"
         . "  1) Файл config.php не тот, который вы редактировали — сверьте путь выше.\n"
-        . "  2) В config.php опечатка в имени ключа (например, admin-login вместо admin_login).\n"
-        . "  3) PHP закэшировал старую версию файла (opcache). Перезапустите PHP-FPM\n"
-        . "     или дождитесь истечения opcache.revalidate_freq (обычно 2 секунды).",
+        . "  2) Опечатка в имени ключа.\n"
+        . "  3) PHP закэшировал старую версию (opcache). Перезапустите PHP-FPM.",
         $isCli,
         1,
         function () use ($cfg, $diagnostics, $isCli) {
@@ -231,9 +216,6 @@ if ($missingKeys !== []) {
     );
 }
 
-// =============================================================================
-// Учётные данные администратора
-// =============================================================================
 $adminLogin    = trim((string) $cfg['admin_login']);
 $adminPassword = (string) $cfg['admin_password'];
 $adminFullname = trim((string) ($cfg['admin_fullname'] ?? 'Администратор'));
@@ -249,9 +231,7 @@ foreach ($argvList as $a) {
 
 if ($adminLogin === '') {
     init_fail(
-        "Ключ 'admin_login' в config.php пустой.\n\n"
-        . "Прочитан файл: {$configPath}\n"
-        . "Установите значение, например: 'admin_login' => 'admin',",
+        "Ключ 'admin_login' в config.php пустой.\n\nПрочитан файл: {$configPath}",
         $isCli,
         1,
         function () use ($cfg, $diagnostics, $isCli) {
@@ -262,9 +242,7 @@ if ($adminLogin === '') {
 }
 if ($adminPassword === '') {
     init_fail(
-        "Ключ 'admin_password' в config.php пустой.\n\n"
-        . "Прочитан файл: {$configPath}\n"
-        . "Установите пароль администратора, например: 'admin_password' => 'Admin#2026!',",
+        "Ключ 'admin_password' в config.php пустой.\n\nПрочитан файл: {$configPath}",
         $isCli,
         1,
         function () use ($cfg, $diagnostics, $isCli) {
@@ -283,15 +261,9 @@ if (strlen($adminPassword) < $minLen) {
     );
 }
 
-// =============================================================================
-// Путь к БД
-// =============================================================================
 $dbPath  = (string) $cfg['db_path'];
 $dataDir = dirname($dbPath);
 
-// =============================================================================
-// Reset
-// =============================================================================
 $resetRequested = $isCli
     ? $reset
     : (isset($_GET['reset']) && $_GET['reset'] === '1');
@@ -312,9 +284,6 @@ if (!$isCli && $resetRequested && !$isPost) {
     exit;
 }
 
-// =============================================================================
-// Папка БД
-// =============================================================================
 if (!is_dir($dataDir)) {
     if (!@mkdir($dataDir, 0775, true) && !is_dir($dataDir)) {
         init_fail("Не удалось создать директорию для БД: {$dataDir}", $isCli);
@@ -328,9 +297,6 @@ if (!is_writable($dataDir)) {
     );
 }
 
-// =============================================================================
-// Reset — удалить файл перед открытием
-// =============================================================================
 if ($resetRequested && is_file($dbPath)) {
     if (!@unlink($dbPath)) {
         init_fail("Не удалось удалить старую БД: {$dbPath}", $isCli);
@@ -341,9 +307,6 @@ if ($resetRequested && is_file($dbPath)) {
     if ($isCli) echo "→ Удалён старый файл: {$dbPath}\n";
 }
 
-// =============================================================================
-// Открыть БД
-// =============================================================================
 try {
     $pdo = new PDO('sqlite:' . $dbPath);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -366,7 +329,7 @@ if (!$isCli) {
 }
 
 // =============================================================================
-// Схема (применяется всегда)
+// Схема
 // =============================================================================
 $pdo->exec(<<<'SQL'
 CREATE TABLE IF NOT EXISTS roles (
@@ -532,6 +495,19 @@ CREATE TABLE IF NOT EXISTS academic_years (
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_academic_years_current
 ON academic_years(is_current) WHERE is_current = 1;
+
+CREATE TABLE IF NOT EXISTS groups (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    academic_year_id INTEGER NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
+    name             TEXT NOT NULL,
+    curator          TEXT,
+    notes            TEXT,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (academic_year_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_groups_year ON groups(academic_year_id);
 SQL);
 
 init_out('✓ Схема применена', $isCli);
@@ -579,6 +555,32 @@ if ($ayCount === 0) {
     init_out('→ Учебные годы: ' . $ayCount . ' (сид пропущен)', $isCli);
 }
 
+$groupsCount = (int) $pdo->query('SELECT COUNT(*) FROM groups')->fetchColumn();
+if ($groupsCount === 0) {
+    $yearsByCode = [];
+    foreach ($pdo->query('SELECT id, name FROM academic_years')->fetchAll() as $y) {
+        $yearsByCode[$y['name']] = (int) $y['id'];
+    }
+    $seedGroups = [
+        ['2024/2025', '45', null],
+        ['2024/2025', '35', null],
+        ['2025/2026', '46', null],
+        ['2025/2026', '36', null],
+    ];
+    $stmt = $pdo->prepare(
+        'INSERT OR IGNORE INTO groups (academic_year_id, name) VALUES (:y, :n)'
+    );
+    $added = 0;
+    foreach ($seedGroups as [$yearName, $groupName, $curator]) {
+        if (!isset($yearsByCode[$yearName])) continue;
+        $stmt->execute([':y' => $yearsByCode[$yearName], ':n' => $groupName]);
+        $added += $stmt->rowCount();
+    }
+    init_out('✓ Группы (сид): ' . $added, $isCli);
+} else {
+    init_out('→ Группы: ' . $groupsCount . ' (сид пропущен)', $isCli);
+}
+
 $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE login = :l');
 $stmt->execute([':l' => $adminLogin]);
 $adminCreated = false;
@@ -608,6 +610,9 @@ $help = [
     ['prikaz-aliases', 'Псевдонимы и персональные данные',
      "В репозиториях (Gogs, GitHub) используются только псевдонимы вида s-<группа>-<номер>.\n\nРасшифровка «псевдоним → ФИО» хранится только в Приказе. Это требование 152-ФЗ.\n\nРаздел «Студенты» в админке показывает соответствие.",
      'admin'],
+    ['prikaz-groups', 'Группы и учебный год',
+     "Группы принадлежат учебному году. Каждый год — свой набор групп.\n\nГруппа «46» в 2024/2025 и «46» в 2025/2026 — разные сущности. У каждой своя история и свой состав.\n\nПри удалении учебного года все его группы удаляются. Студенты и оценки остаются, но привязка к группе теряется.",
+     'admin'],
     ['prikaz-admin', 'Админ: как управлять пользователями',
      "Только администратор может создавать пользователей.\n\n1. Раздел «Пользователи».\n2. «Создать» — логин, ФИО, роль, временный пароль.\n3. Передать пароль пользователю.\n4. Смена пароля — кнопка «Сбросить».",
      'admin'],
@@ -625,7 +630,7 @@ $tables = [
     'roles', 'users', 'user_roles', 'teachers', 'students', 'parents',
     'lessons', 'grades', 'project_phases', 'projects', 'project_students',
     'project_history', 'parent_visits', 'audit_log', 'help_articles',
-    'help_feedback', 'academic_years',
+    'help_feedback', 'academic_years', 'groups',
 ];
 $counts = [];
 foreach ($tables as $t) {

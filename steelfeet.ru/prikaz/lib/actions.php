@@ -2,14 +2,19 @@
 declare(strict_types=1);
 
 /**
- * POST-обработчики Приказа. Ожидает $currentUser и $action.
+ * POST-обработчики Приказа.
+ * Ожидает $currentUser и $action из index.php.
+ *
+ * ВАЖНО: файл не должен заканчиваться на ?>. 
+ * Никакого HTML внутри нет, поэтому закрывающий тег не нужен и опасен 
+ * (пробел после ?> попадёт в вывод и сломает redirect).
  */
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
 csrf_verify();
 $pdo = db();
 
-// ===== Logout =====
+// ===== Выход =====
 if ($action === 'logout') {
     auth_logout();
     redirect('index.php?page=login');
@@ -42,7 +47,7 @@ if ($action === 'change_own_password') {
     redirect('index.php?page=profile');
 }
 
-// ===== Оценка =====
+// ===== Оценка: поставить / изменить =====
 if ($action === 'grade_set') {
     if (!in_array('teacher', $currentUser['roles'], true) && !in_array('admin', $currentUser['roles'], true)) {
         http_response_code(403); exit('Доступ запрещён');
@@ -60,11 +65,23 @@ if ($action === 'grade_set') {
     $existing = $stmt->fetchColumn();
     if ($existing !== false) {
         $pdo->prepare('UPDATE grades SET mark = :m, note = :n, updated_by = :u, updated_at = :t WHERE id = :id')
-            ->execute([':m' => $mark, ':n' => $note !== '' ? $note : null, ':u' => (int) $currentUser['id'], ':t' => date('Y-m-d H:i:s'), ':id' => (int) $existing]);
+            ->execute([
+                ':m'  => $mark,
+                ':n'  => $note !== '' ? $note : null,
+                ':u'  => (int) $currentUser['id'],
+                ':t'  => date('Y-m-d H:i:s'),
+                ':id' => (int) $existing,
+            ]);
         audit_log((int) $currentUser['id'], 'grade_update', 'grade', (int) $existing);
     } else {
         $pdo->prepare('INSERT INTO grades (lesson_id, student_id, mark, note, updated_by) VALUES (:l, :s, :m, :n, :u)')
-            ->execute([':l' => $lessonId, ':s' => $studentId, ':m' => $mark, ':n' => $note !== '' ? $note : null, ':u' => (int) $currentUser['id']]);
+            ->execute([
+                ':l' => $lessonId,
+                ':s' => $studentId,
+                ':m' => $mark,
+                ':n' => $note !== '' ? $note : null,
+                ':u' => (int) $currentUser['id'],
+            ]);
         audit_log((int) $currentUser['id'], 'grade_create', 'grade', (int) $pdo->lastInsertId());
     }
     flash_set('success', 'Оценка сохранена.');
@@ -185,7 +202,86 @@ if ($action === 'admin_academic_year_set_current') {
     redirect('index.php?page=admin&section=academic_years');
 }
 
-// ===== Пользователь: создание =====
+// ===== ГРУППА: сохранение (создание / редактирование) =====
+if ($action === 'admin_group_save') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $id             = (int) ($_POST['id'] ?? 0);
+    $academicYearId = (int) ($_POST['academic_year_id'] ?? 0);
+    $name           = trim((string) ($_POST['name'] ?? ''));
+    $curator        = trim((string) ($_POST['curator'] ?? ''));
+    $notes          = trim((string) ($_POST['notes'] ?? ''));
+
+    if ($name === '') {
+        flash_set('danger', 'Укажите название группы.');
+        redirect('index.php?page=admin&section=groups');
+    }
+    if ($academicYearId <= 0) {
+        flash_set('danger', 'Выберите учебный год.');
+        redirect('index.php?page=admin&section=groups');
+    }
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM academic_years WHERE id = :id');
+    $stmt->execute([':id' => $academicYearId]);
+    if ((int) $stmt->fetchColumn() === 0) {
+        flash_set('danger', 'Учебный год не найден.');
+        redirect('index.php?page=admin&section=groups');
+    }
+
+    try {
+        if ($id > 0) {
+            $pdo->prepare(
+                'UPDATE groups
+                 SET academic_year_id = :y, name = :n, curator = :c, notes = :no, updated_at = :t
+                 WHERE id = :id'
+            )->execute([
+                ':y'  => $academicYearId,
+                ':n'  => $name,
+                ':c'  => $curator !== '' ? $curator : null,
+                ':no' => $notes !== '' ? $notes : null,
+                ':t'  => date('Y-m-d H:i:s'),
+                ':id' => $id,
+            ]);
+            audit_log((int) $currentUser['id'], 'group_update', 'group', $id);
+            flash_set('success', 'Группа сохранена.');
+        } else {
+            $pdo->prepare(
+                'INSERT INTO groups (academic_year_id, name, curator, notes)
+                 VALUES (:y, :n, :c, :no)'
+            )->execute([
+                ':y'  => $academicYearId,
+                ':n'  => $name,
+                ':c'  => $curator !== '' ? $curator : null,
+                ':no' => $notes !== '' ? $notes : null,
+            ]);
+            $newId = (int) $pdo->lastInsertId();
+            audit_log((int) $currentUser['id'], 'group_create', 'group', $newId);
+            flash_set('success', 'Группа создана.');
+        }
+    } catch (PDOException $e) {
+        if (str_contains($e->getMessage(), 'UNIQUE')) {
+            flash_set('danger', 'Группа с таким названием уже есть в этом учебном году.');
+        } else {
+            flash_set('danger', 'Ошибка: ' . $e->getMessage());
+        }
+    }
+    redirect('index.php?page=admin&section=groups');
+}
+
+// ===== ГРУППА: удаление =====
+if ($action === 'admin_group_delete') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $id = (int) ($_POST['id'] ?? 0);
+    try {
+        $pdo->prepare('DELETE FROM groups WHERE id = :id')->execute([':id' => $id]);
+        audit_log((int) $currentUser['id'], 'group_delete', 'group', $id);
+        flash_set('success', 'Группа удалена.');
+    } catch (Throwable $e) {
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect('index.php?page=admin&section=groups');
+}
+
+// ===== ПОЛЬЗОВАТЕЛЬ: создание =====
 if ($action === 'admin_user_create') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
     $login    = trim((string) ($_POST['login'] ?? ''));
@@ -214,19 +310,32 @@ if ($action === 'admin_user_create') {
     try {
         $pdo->beginTransaction();
         $pdo->prepare('INSERT INTO users (login, full_name, email, password_hash, is_active) VALUES (:l, :n, :e, :h, 1)')
-            ->execute([':l' => $login, ':n' => $fullName, ':e' => $email !== '' ? $email : null, ':h' => password_hash($password, PASSWORD_DEFAULT)]);
+            ->execute([
+                ':l' => $login,
+                ':n' => $fullName,
+                ':e' => $email !== '' ? $email : null,
+                ':h' => password_hash($password, PASSWORD_DEFAULT),
+            ]);
         $userId = (int) $pdo->lastInsertId();
         $stmt = $pdo->prepare('SELECT id FROM roles WHERE code = :c');
         $stmt->execute([':c' => $roleCode]);
         $roleId = (int) $stmt->fetchColumn();
-        $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (:u, :r)')->execute([':u' => $userId, ':r' => $roleId]);
+        $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (:u, :r)')
+            ->execute([':u' => $userId, ':r' => $roleId]);
         if ($roleCode === 'teacher') {
-            $pdo->prepare('INSERT INTO teachers (user_id, full_name) VALUES (:u, :n)')->execute([':u' => $userId, ':n' => $fullName]);
+            $pdo->prepare('INSERT INTO teachers (user_id, full_name) VALUES (:u, :n)')
+                ->execute([':u' => $userId, ':n' => $fullName]);
         } elseif ($roleCode === 'student') {
             $pdo->prepare('INSERT INTO students (user_id, full_name, group_name, alias) VALUES (:u, :n, :g, :a)')
-                ->execute([':u' => $userId, ':n' => $fullName, ':g' => $group, ':a' => $alias !== '' ? $alias : null]);
+                ->execute([
+                    ':u' => $userId,
+                    ':n' => $fullName,
+                    ':g' => $group,
+                    ':a' => $alias !== '' ? $alias : null,
+                ]);
         } elseif ($roleCode === 'parent') {
-            $pdo->prepare('INSERT INTO parents (user_id, full_name) VALUES (:u, :n)')->execute([':u' => $userId, ':n' => $fullName]);
+            $pdo->prepare('INSERT INTO parents (user_id, full_name) VALUES (:u, :n)')
+                ->execute([':u' => $userId, ':n' => $fullName]);
         }
         $pdo->commit();
         audit_log((int) $currentUser['id'], 'user_create', 'user', $userId);
@@ -238,6 +347,7 @@ if ($action === 'admin_user_create') {
     redirect('index.php?page=admin&section=users');
 }
 
+// ===== ПОЛЬЗОВАТЕЛЬ: блокировка / разблокировка =====
 if ($action === 'admin_user_toggle') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
     $userId = (int) ($_POST['user_id'] ?? 0);
@@ -252,6 +362,7 @@ if ($action === 'admin_user_toggle') {
     redirect('index.php?page=admin&section=users');
 }
 
+// ===== ПОЛЬЗОВАТЕЛЬ: сброс пароля =====
 if ($action === 'admin_user_reset_password') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
     $userId   = (int) ($_POST['user_id'] ?? 0);
@@ -261,12 +372,17 @@ if ($action === 'admin_user_reset_password') {
         redirect('index.php?page=admin&section=users');
     }
     $pdo->prepare('UPDATE users SET password_hash = :h, updated_at = :t WHERE id = :id')
-        ->execute([':h' => password_hash($password, PASSWORD_DEFAULT), ':t' => date('Y-m-d H:i:s'), ':id' => $userId]);
+        ->execute([
+            ':h'  => password_hash($password, PASSWORD_DEFAULT),
+            ':t'  => date('Y-m-d H:i:s'),
+            ':id' => $userId,
+        ]);
     audit_log((int) $currentUser['id'], 'user_reset_password', 'user', $userId);
     flash_set('success', 'Пароль сброшен.');
     redirect('index.php?page=admin&section=users');
 }
 
+// ===== РОДИТЕЛЬ: привязка к студенту =====
 if ($action === 'admin_parent_link') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
     $parentId  = (int) ($_POST['parent_id'] ?? 0);
@@ -280,6 +396,7 @@ if ($action === 'admin_parent_link') {
     redirect('index.php?page=admin&section=parents');
 }
 
+// ===== РОДИТЕЛЬ: отвязка =====
 if ($action === 'admin_parent_unlink') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
     $parentId  = (int) ($_POST['parent_id'] ?? 0);
@@ -291,6 +408,7 @@ if ($action === 'admin_parent_unlink') {
     redirect('index.php?page=admin&section=parents');
 }
 
+// ===== УРОК: сохранение =====
 if ($action === 'admin_lesson_save') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
     $id       = (int) ($_POST['id'] ?? 0);
@@ -319,6 +437,7 @@ if ($action === 'admin_lesson_save') {
     redirect('index.php?page=admin&section=lessons');
 }
 
+// ===== УРОК: удаление =====
 if ($action === 'admin_lesson_delete') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
     $id = (int) ($_POST['id'] ?? 0);
@@ -328,6 +447,7 @@ if ($action === 'admin_lesson_delete') {
     redirect('index.php?page=admin&section=lessons');
 }
 
+// ===== ПРОЕКТ: создание =====
 if ($action === 'admin_project_create') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
     $title     = trim((string) ($_POST['title'] ?? ''));
@@ -343,12 +463,19 @@ if ($action === 'admin_project_create') {
     try {
         $pdo->beginTransaction();
         $pdo->prepare('INSERT INTO projects (title, type, parent_id, repo_url, created_by) VALUES (:t, :ty, :p, :r, :u)')
-            ->execute([':t' => $title, ':ty' => $type, ':p' => $parentId > 0 ? $parentId : null, ':r' => $repoUrl !== '' ? $repoUrl : null, ':u' => (int) $currentUser['id']]);
+            ->execute([
+                ':t'  => $title,
+                ':ty' => $type,
+                ':p'  => $parentId > 0 ? $parentId : null,
+                ':r'  => $repoUrl !== '' ? $repoUrl : null,
+                ':u'  => (int) $currentUser['id'],
+            ]);
         $pid = (int) $pdo->lastInsertId();
         foreach ($students as $sid) {
             $sid = (int) $sid;
             if ($sid > 0) {
-                $pdo->prepare('INSERT OR IGNORE INTO project_students (project_id, student_id) VALUES (:p, :s)')->execute([':p' => $pid, ':s' => $sid]);
+                $pdo->prepare('INSERT OR IGNORE INTO project_students (project_id, student_id) VALUES (:p, :s)')
+                    ->execute([':p' => $pid, ':s' => $sid]);
             }
         }
         $phases = project_phases_meta();
@@ -364,12 +491,17 @@ if ($action === 'admin_project_create') {
     redirect('index.php?page=admin&section=projects');
 }
 
+// ===== HELP: feedback =====
 if ($action === 'help_feedback') {
     $articleId = (int) ($_POST['article_id'] ?? 0);
     $body      = trim((string) ($_POST['body'] ?? ''));
     if ($articleId > 0 && $body !== '') {
         $pdo->prepare('INSERT INTO help_feedback (article_id, user_id, body) VALUES (:a, :u, :b)')
-            ->execute([':a' => $articleId, ':u' => (int) $currentUser['id'], ':b' => mb_substr($body, 0, 500)]);
+            ->execute([
+                ':a' => $articleId,
+                ':u' => (int) $currentUser['id'],
+                ':b' => mb_substr($body, 0, 500),
+            ]);
     }
     redirect($_SERVER['HTTP_REFERER'] ?? 'index.php');
 }

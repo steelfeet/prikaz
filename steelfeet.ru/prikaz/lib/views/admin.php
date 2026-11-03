@@ -102,7 +102,7 @@ $typesMeta = project_types_meta();
                                                 <button type="submit" class="pzk-btn pzk-btn--sm">Сделать текущим</button>
                                             </form>
                                             <form method="post" action="index.php?action=admin_academic_year_delete"
-                                                  onsubmit="return confirm('Удалить учебный год «<?= e($ay['name']) ?>»?');">
+                                                  onsubmit="return confirm('Удалить учебный год «<?= e($ay['name']) ?>»? Все группы этого года тоже будут удалены.');">
                                                 <?= csrf_field() ?>
                                                 <input type="hidden" name="id" value="<?= (int) $ay['id'] ?>">
                                                 <button type="submit" class="pzk-btn pzk-btn--sm">Удалить</button>
@@ -165,12 +165,192 @@ $typesMeta = project_types_meta();
             <div class="panel__head">
                 <div>
                     <h2 class="panel__title">Группы</h2>
-                    <p class="panel__subtitle">Раздел в разработке.</p>
+                    <p class="panel__subtitle">
+                        Каждый учебный год — свой набор групп.
+                        <?php if ($adminCurrentYear !== null): ?>
+                            В текущем году <strong><?= e($adminCurrentYear['name']) ?></strong>
+                            <?php
+                            $currentYearGroupCount = 0;
+                            foreach ($adminGroups as $g) {
+                                if ((int) $g['academic_year_id'] === (int) $adminCurrentYear['id']) { $currentYearGroupCount++; }
+                            }
+                            ?>
+                            групп: <strong><?= $currentYearGroupCount ?></strong>.
+                        <?php endif; ?>
+                    </p>
                 </div>
+                <a href="#add-group" class="pzk-btn pzk-btn--primary" data-open-details>
+                    ➕ Добавить
+                </a>
             </div>
-            <div class="uni-empty">
-                Функционал появится в следующей версии. Сейчас группы задаются полем «group_name» при создании студента.
-            </div>
+
+            <?php if ($adminAcademicYears === []): ?>
+                <div class="uni-empty">
+                    Сначала создайте хотя бы один учебный год — в разделе «Учебный год».
+                </div>
+            <?php else: ?>
+                <form method="get" action="index.php" class="pzk-inline-form" autocomplete="off"
+                      style="margin-bottom: var(--space-md);">
+                    <input type="hidden" name="page" value="admin">
+                    <input type="hidden" name="section" value="groups">
+                    <label>Учебный год:
+                        <select name="group_year" class="pzk-field__input" onchange="this.form.submit();">
+                            <option value="0" <?= $adminGroupsFilterYear === 0 ? 'selected' : '' ?>>— все —</option>
+                            <?php foreach ($adminAcademicYears as $ay): ?>
+                                <option value="<?= (int) $ay['id'] ?>"
+                                        <?= (int) $adminGroupsFilterYear === (int) $ay['id'] ? 'selected' : '' ?>>
+                                    <?= e($ay['name']) ?><?= (int) $ay['is_current'] === 1 ? ' (текущий)' : '' ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                </form>
+
+                <?php if ($adminGroups === []): ?>
+                    <div class="uni-empty">
+                        <?php if ($adminGroupsFilterYear > 0): ?>
+                            В выбранном учебном году групп пока нет. Добавьте первую.
+                        <?php else: ?>
+                            Групп пока нет. Добавьте первую.
+                        <?php endif; ?>
+                    </div>
+                <?php else: ?>
+                    <div class="pzk-table-wrap">
+                        <table class="pzk-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:60px;">ID</th>
+                                    <th style="width:200px;">Учебный год</th>
+                                    <th>Название</th>
+                                    <th style="width:180px;">Куратор</th>
+                                    <th>Заметки</th>
+                                    <th style="width:280px;">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($adminGroups as $g): ?>
+                                    <tr>
+                                        <td><?= (int) $g['id'] ?></td>
+                                        <td>
+                                            <strong><?= e($g['year_name']) ?></strong>
+                                            <?php if ((int) $g['year_is_current'] === 1): ?>
+                                                <br><span class="pzk-status pzk-status--active" style="margin-top:4px;">текущий</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td><strong><?= e($g['name']) ?></strong></td>
+                                        <td>
+                                            <?php if (!empty($g['curator'])): ?>
+                                                <?= e($g['curator']) ?>
+                                            <?php else: ?>
+                                                <span style="color:var(--color-tertiary);">—</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td style="font-size:0.82rem; color:var(--color-tertiary);">
+                                            <?= e((string) ($g['notes'] ?? '')) ?>
+                                        </td>
+                                        <td class="pzk-table__actions">
+                                            <details class="pzk-row-details">
+                                                <summary class="pzk-btn pzk-btn--sm">Редактировать</summary>
+                                                <form method="post" action="index.php?action=admin_group_save"
+                                                      class="pzk-edit-form" autocomplete="off">
+                                                    <?= csrf_field() ?>
+                                                    <input type="hidden" name="id" value="<?= (int) $g['id'] ?>">
+                                                    <label class="pzk-field">
+                                                        <span class="pzk-field__label">Название</span>
+                                                        <input type="text" name="name" value="<?= e($g['name']) ?>"
+                                                               required autocomplete="off"
+                                                               class="pzk-field__input pzk-field__input--sm">
+                                                    </label>
+                                                    <label class="pzk-field">
+                                                        <span class="pzk-field__label">Учебный год</span>
+                                                        <select name="academic_year_id" required
+                                                                class="pzk-field__input pzk-field__input--sm">
+                                                            <?php foreach ($adminAcademicYears as $ay): ?>
+                                                                <option value="<?= (int) $ay['id'] ?>"
+                                                                        <?= (int) $ay['id'] === (int) $g['academic_year_id'] ? 'selected' : '' ?>>
+                                                                    <?= e($ay['name']) ?>
+                                                                </option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                    </label>
+                                                    <label class="pzk-field">
+                                                        <span class="pzk-field__label">Куратор</span>
+                                                        <input type="text" name="curator"
+                                                               value="<?= e((string) ($g['curator'] ?? '')) ?>"
+                                                               autocomplete="off"
+                                                               class="pzk-field__input pzk-field__input--sm">
+                                                    </label>
+                                                    <label class="pzk-field">
+                                                        <span class="pzk-field__label">Заметки</span>
+                                                        <input type="text" name="notes"
+                                                               value="<?= e((string) ($g['notes'] ?? '')) ?>"
+                                                               autocomplete="off"
+                                                               class="pzk-field__input pzk-field__input--sm">
+                                                    </label>
+                                                    <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Сохранить</button>
+                                                </form>
+                                            </details>
+                                            <form method="post" action="index.php?action=admin_group_delete"
+                                                  onsubmit="return confirm('Удалить группу «<?= e($g['name']) ?>» (<?= e($g['year_name']) ?>)? Студенты, привязанные к ней, останутся, но группа исчезнет из списка.');">
+                                                <?= csrf_field() ?>
+                                                <input type="hidden" name="id" value="<?= (int) $g['id'] ?>">
+                                                <button type="submit" class="pzk-btn pzk-btn--sm">Удалить</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+
+                <details class="pzk-details" id="add-group" style="margin-top: var(--space-lg);">
+                    <summary class="pzk-details__summary">➕ Добавить группу</summary>
+                    <form method="post" action="index.php?action=admin_group_save"
+                          class="pzk-form" autocomplete="off">
+                        <?= csrf_field() ?>
+                        <div>
+                            <h3 class="pzk-form__title">Новая группа</h3>
+                            <p class="pzk-form__hint">
+                                Группа принадлежит одному учебному году. В разных годах могут
+                                быть группы с одинаковыми названиями — это разные сущности.
+                                Название группы в году должно быть уникальным.
+                            </p>
+                        </div>
+                        <div class="pzk-form__grid">
+                            <label class="pzk-field">
+                                <span class="pzk-field__label">Название группы</span>
+                                <input class="pzk-field__input" type="text" name="name" required
+                                       placeholder="46" autocomplete="off">
+                            </label>
+                            <label class="pzk-field">
+                                <span class="pzk-field__label">Учебный год</span>
+                                <select class="pzk-field__input" name="academic_year_id" required>
+                                    <?php foreach ($adminAcademicYears as $ay): ?>
+                                        <option value="<?= (int) $ay['id'] ?>"
+                                                <?= (int) $ay['id'] === (int) $defaultGroupYearId ? 'selected' : '' ?>>
+                                            <?= e($ay['name']) ?><?= (int) $ay['is_current'] === 1 ? ' (текущий)' : '' ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </label>
+                            <label class="pzk-field">
+                                <span class="pzk-field__label">Куратор (опционально)</span>
+                                <input class="pzk-field__input" type="text" name="curator"
+                                       placeholder="Иванов Иван Иванович" autocomplete="off">
+                            </label>
+                            <label class="pzk-field">
+                                <span class="pzk-field__label">Заметки (опционально)</span>
+                                <input class="pzk-field__input" type="text" name="notes"
+                                       placeholder="Например: специальность 10.02.05" autocomplete="off">
+                            </label>
+                        </div>
+                        <div class="pzk-form__actions">
+                            <button type="submit" class="pzk-btn pzk-btn--primary">Создать группу</button>
+                        </div>
+                    </form>
+                </details>
+            <?php endif; ?>
         </section>
 
     <?php elseif ($section === 'curriculum'): ?>
@@ -704,7 +884,6 @@ $typesMeta = project_types_meta();
    Стили админки. Применяются только на ?page=admin.
    ============================================================================= */
 
-/* ===== Таблицы ===== */
 .pzk-table th,
 .pzk-table td {
     padding: 14px 18px;
@@ -784,7 +963,6 @@ $typesMeta = project_types_meta();
     display: inline-block;
 }
 
-/* ===== Inline-форма привязки родителя ===== */
 .pzk-inline-form {
     display: flex;
     gap: 14px;
@@ -802,7 +980,6 @@ $typesMeta = project_types_meta();
     color: var(--color-secondary);
 }
 
-/* ===== Редактирование в строке таблицы ===== */
 .pzk-row-details summary {
     list-style: none;
     cursor: pointer;
@@ -835,10 +1012,6 @@ $typesMeta = project_types_meta();
 .pzk-edit-form .pzk-field__label { font-size: 0.78rem; }
 .pzk-edit-form .pzk-field__input { padding: 6px 10px; font-size: 0.85rem; }
 .pzk-edit-form .pzk-btn { align-self: flex-start; margin-top: 6px; }
-
-/* =============================================================================
-   ФОРМЫ В АДМИНКЕ — крупные, просторные, славянский стиль
-   ============================================================================= */
 
 .pzk-details {
     background: #fbf7ec;
