@@ -1,9 +1,9 @@
 <?php
 declare(strict_types=1);
 
-$section = $_GET['section'] ?? 'users';
-if (!in_array($section, ['users', 'students', 'parents', 'lessons', 'projects', 'audit'], true)) {
-    $section = 'users';
+$section = $_GET['section'] ?? 'academic_years';
+if (!in_array($section, ['academic_years', 'groups', 'curriculum', 'users', 'students', 'parents', 'lessons', 'projects', 'audit'], true)) {
+    $section = 'academic_years';
 }
 $flash = flash_get();
 
@@ -16,60 +16,187 @@ $typesMeta = project_types_meta();
         </div>
     <?php endif; ?>
 
-    <?php if ($section === 'users'): ?>
+    <?php if ($section === 'academic_years'): ?>
+        <section class="panel">
+            <div class="panel__head">
+                <div>
+                    <h2 class="panel__title">Учебный год</h2>
+                    <p class="panel__subtitle">
+                        Текущий учебный год — один на всю систему.
+                        <?php if ($adminCurrentYear !== null): ?>
+                            Сейчас: <strong><?= e($adminCurrentYear['name']) ?></strong>.
+                        <?php endif; ?>
+                    </p>
+                </div>
+                <a href="#add-academic-year" class="pzk-btn pzk-btn--primary" data-open-details>
+                    ➕ Добавить
+                </a>
+            </div>
+
+            <?php if ($adminAcademicYears === []): ?>
+                <div class="uni-empty">Учебных годов пока нет. Добавьте первый.</div>
+            <?php else: ?>
+                <div class="pzk-table-wrap">
+                    <table class="pzk-table">
+                        <thead>
+                            <tr>
+                                <th style="width:60px;">ID</th>
+                                <th>Название</th>
+                                <th style="width:150px;">Начало</th>
+                                <th style="width:150px;">Окончание</th>
+                                <th style="width:130px;">Текущий</th>
+                                <th style="width:340px;">Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($adminAcademicYears as $ay): ?>
+                                <tr>
+                                    <td><?= (int) $ay['id'] ?></td>
+                                    <td><strong><?= e($ay['name']) ?></strong></td>
+                                    <td><?= e($ay['start_date']) ?></td>
+                                    <td><?= e($ay['end_date']) ?></td>
+                                    <td>
+                                        <?php if ((int) $ay['is_current'] === 1): ?>
+                                            <span class="pzk-status pzk-status--active">текущий</span>
+                                        <?php else: ?>
+                                            <span style="color:var(--color-tertiary);">—</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="pzk-table__actions">
+                                        <details class="pzk-row-details">
+                                            <summary class="pzk-btn pzk-btn--sm">Редактировать</summary>
+                                            <form method="post" action="index.php?action=admin_academic_year_save"
+                                                  class="pzk-edit-form" autocomplete="off">
+                                                <?= csrf_field() ?>
+                                                <input type="hidden" name="id" value="<?= (int) $ay['id'] ?>">
+                                                <label class="pzk-field">
+                                                    <span class="pzk-field__label">Название</span>
+                                                    <input type="text" name="name" value="<?= e($ay['name']) ?>"
+                                                           required autocomplete="off"
+                                                           class="pzk-field__input pzk-field__input--sm">
+                                                </label>
+                                                <label class="pzk-field">
+                                                    <span class="pzk-field__label">Начало</span>
+                                                    <input type="date" name="start_date" value="<?= e($ay['start_date']) ?>"
+                                                           required autocomplete="off"
+                                                           class="pzk-field__input pzk-field__input--sm">
+                                                </label>
+                                                <label class="pzk-field">
+                                                    <span class="pzk-field__label">Окончание</span>
+                                                    <input type="date" name="end_date" value="<?= e($ay['end_date']) ?>"
+                                                           required autocomplete="off"
+                                                           class="pzk-field__input pzk-field__input--sm">
+                                                </label>
+                                                <label class="pzk-checkbox">
+                                                    <input type="checkbox" name="is_current" value="1"
+                                                           <?= (int) $ay['is_current'] === 1 ? 'checked' : '' ?>>
+                                                    Текущий
+                                                </label>
+                                                <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Сохранить</button>
+                                            </form>
+                                        </details>
+                                        <?php if ((int) $ay['is_current'] !== 1): ?>
+                                            <form method="post" action="index.php?action=admin_academic_year_set_current">
+                                                <?= csrf_field() ?>
+                                                <input type="hidden" name="id" value="<?= (int) $ay['id'] ?>">
+                                                <button type="submit" class="pzk-btn pzk-btn--sm">Сделать текущим</button>
+                                            </form>
+                                            <form method="post" action="index.php?action=admin_academic_year_delete"
+                                                  onsubmit="return confirm('Удалить учебный год «<?= e($ay['name']) ?>»?');">
+                                                <?= csrf_field() ?>
+                                                <input type="hidden" name="id" value="<?= (int) $ay['id'] ?>">
+                                                <button type="submit" class="pzk-btn pzk-btn--sm">Удалить</button>
+                                            </form>
+                                        <?php else: ?>
+                                            <span class="pzk-hint-inline" title="Нельзя удалить текущий учебный год">
+                                                🔒 удаление недоступно
+                                            </span>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+
+            <details class="pzk-details" id="add-academic-year" style="margin-top: var(--space-lg);">
+                <summary class="pzk-details__summary">➕ Добавить учебный год</summary>
+                <form method="post" action="index.php?action=admin_academic_year_save"
+                      class="pzk-form" autocomplete="off">
+                    <?= csrf_field() ?>
+                    <div>
+                        <h3 class="pzk-form__title">Новый учебный год</h3>
+                        <p class="pzk-form__hint">
+                            Название в формате «2025/2026». Текущий год — один на всю систему:
+                            назначение нового автоматически снимает флаг с предыдущего.
+                        </p>
+                    </div>
+                    <div class="pzk-form__grid">
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Название</span>
+                            <input class="pzk-field__input" type="text" name="name" required
+                                   placeholder="2025/2026" autocomplete="off">
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Дата начала</span>
+                            <input class="pzk-field__input" type="date" name="start_date" required
+                                   autocomplete="off" value="<?= date('Y') ?>-09-01">
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Дата окончания</span>
+                            <input class="pzk-field__input" type="date" name="end_date" required
+                                   autocomplete="off" value="<?= (date('Y') + 1) ?>-06-30">
+                        </label>
+                    </div>
+                    <label class="pzk-checkbox">
+                        <input type="checkbox" name="is_current" value="1">
+                        Сделать текущим учебным годом
+                    </label>
+                    <div class="pzk-form__actions">
+                        <button type="submit" class="pzk-btn pzk-btn--primary">Создать учебный год</button>
+                    </div>
+                </form>
+            </details>
+        </section>
+
+    <?php elseif ($section === 'groups'): ?>
+        <section class="panel">
+            <div class="panel__head">
+                <div>
+                    <h2 class="panel__title">Группы</h2>
+                    <p class="panel__subtitle">Раздел в разработке.</p>
+                </div>
+            </div>
+            <div class="uni-empty">
+                Функционал появится в следующей версии. Сейчас группы задаются полем «group_name» при создании студента.
+            </div>
+        </section>
+
+    <?php elseif ($section === 'curriculum'): ?>
+        <section class="panel">
+            <div class="panel__head">
+                <div>
+                    <h2 class="panel__title">Учебный план</h2>
+                    <p class="panel__subtitle">Раздел в разработке.</p>
+                </div>
+            </div>
+            <div class="uni-empty">
+                Функционал появится в следующей версии. Пока уроки ведутся через раздел «Уроки».
+            </div>
+        </section>
+
+    <?php elseif ($section === 'users'): ?>
         <section class="panel">
             <div class="panel__head">
                 <div>
                     <h2 class="panel__title">Пользователи</h2>
                     <p class="panel__subtitle">Создание, деактивация и сброс паролей. Регистрация — только через админку.</p>
                 </div>
+                <a href="#add-user" class="pzk-btn pzk-btn--primary" data-open-details>
+                    ➕ Добавить
+                </a>
             </div>
-
-            <details class="pzk-details">
-                <summary class="pzk-details__summary">➕ Создать пользователя</summary>
-                <form method="post" action="index.php?action=admin_user_create" class="pzk-form">
-                    <?= csrf_field() ?>
-                    <div class="pzk-form__grid">
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Логин</span>
-                            <input class="pzk-field__input" type="text" name="login" required
-                                   pattern="[a-zA-Z0-9_.-]{3,64}"
-                                   title="3-64 символа: латиница, цифры, точка, дефис, подчёркивание">
-                        </label>
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">ФИО</span>
-                            <input class="pzk-field__input" type="text" name="full_name" required>
-                        </label>
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Email</span>
-                            <input class="pzk-field__input" type="email" name="email">
-                        </label>
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Роль</span>
-                            <select class="pzk-field__input" name="role" required>
-                                <option value="student">Студент</option>
-                                <option value="teacher">Преподаватель</option>
-                                <option value="parent">Родитель</option>
-                                <option value="admin">Администратор</option>
-                            </select>
-                        </label>
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Группа (для студента)</span>
-                            <input class="pzk-field__input" type="text" name="group_name" placeholder="46">
-                        </label>
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Псевдоним (для студента)</span>
-                            <input class="pzk-field__input" type="text" name="alias" placeholder="s-46-01">
-                        </label>
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Временный пароль</span>
-                            <input class="pzk-field__input" type="text" name="password" required
-                                   minlength="<?= PRIKAZ_PASSWORD_MIN ?>">
-                        </label>
-                    </div>
-                    <button type="submit" class="pzk-btn pzk-btn--primary">Создать</button>
-                </form>
-            </details>
 
             <div class="pzk-table-wrap">
                 <table class="pzk-table">
@@ -111,12 +238,13 @@ $typesMeta = project_types_meta();
                                     <?php endif; ?>
                                     <details class="pzk-row-details">
                                         <summary class="pzk-btn pzk-btn--sm">Сбросить пароль</summary>
-                                        <form method="post" action="index.php?action=admin_user_reset_password" class="pzk-row-details__form">
+                                        <form method="post" action="index.php?action=admin_user_reset_password"
+                                              class="pzk-row-details__form" autocomplete="off">
                                             <?= csrf_field() ?>
                                             <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
                                             <input type="text" name="password" placeholder="Новый пароль"
                                                    required minlength="<?= PRIKAZ_PASSWORD_MIN ?>"
-                                                   class="pzk-field__input">
+                                                   autocomplete="new-password" class="pzk-field__input">
                                             <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">ОК</button>
                                         </form>
                                     </details>
@@ -126,6 +254,70 @@ $typesMeta = project_types_meta();
                     </tbody>
                 </table>
             </div>
+
+            <details class="pzk-details" id="add-user" style="margin-top: var(--space-lg);">
+                <summary class="pzk-details__summary">➕ Создать пользователя</summary>
+                <form method="post" action="index.php?action=admin_user_create"
+                      class="pzk-form" autocomplete="off">
+                    <?= csrf_field() ?>
+                    <div>
+                        <h3 class="pzk-form__title">Новый пользователь</h3>
+                        <p class="pzk-form__hint">
+                            Логин — латиница, цифры, точка, дефис. Передайте пользователю логин и пароль:
+                            после первого входа он сможет сменить пароль в «Профиле».
+                        </p>
+                    </div>
+                    <div class="pzk-form__grid">
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Логин</span>
+                            <input class="pzk-field__input" type="text" name="login" required
+                                   pattern="[a-zA-Z0-9_.-]{3,64}"
+                                   placeholder="ivanov" autocomplete="off"
+                                   autocapitalize="off" spellcheck="false">
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">ФИО</span>
+                            <input class="pzk-field__input" type="text" name="full_name" required
+                                   placeholder="Иванов Иван Иванович" autocomplete="off">
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Email</span>
+                            <input class="pzk-field__input" type="email" name="email"
+                                   placeholder="ivanov@example.ru" autocomplete="off">
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Роль</span>
+                            <select class="pzk-field__input" name="role" required>
+                                <option value="student">Студент</option>
+                                <option value="teacher">Преподаватель</option>
+                                <option value="parent">Родитель</option>
+                                <option value="admin">Администратор</option>
+                            </select>
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Группа (для студента)</span>
+                            <input class="pzk-field__input" type="text" name="group_name"
+                                   placeholder="46" autocomplete="off">
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Псевдоним (для студента)</span>
+                            <input class="pzk-field__input" type="text" name="alias"
+                                   placeholder="s-46-01" autocomplete="off"
+                                   autocapitalize="off" spellcheck="false">
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Временный пароль</span>
+                            <input class="pzk-field__input" type="text" name="password" required
+                                   minlength="<?= PRIKAZ_PASSWORD_MIN ?>"
+                                   autocomplete="new-password"
+                                   placeholder="не короче <?= PRIKAZ_PASSWORD_MIN ?> символов">
+                        </label>
+                    </div>
+                    <div class="pzk-form__actions">
+                        <button type="submit" class="pzk-btn pzk-btn--primary">Создать пользователя</button>
+                    </div>
+                </form>
+            </details>
         </section>
 
     <?php elseif ($section === 'students'): ?>
@@ -178,24 +370,20 @@ $typesMeta = project_types_meta();
             </div>
 
             <form method="post" action="index.php?action=admin_parent_link"
-                  class="pzk-inline-form"
+                  class="pzk-inline-form" autocomplete="off"
                   style="margin-bottom: var(--space-md);">
                 <?= csrf_field() ?>
                 <label>Родитель:
                     <select name="parent_id" class="pzk-field__input">
                         <?php foreach ($adminParents as $p): ?>
-                            <option value="<?= (int) $p['id'] ?>">
-                                <?= e($p['full_name']) ?> (#<?= (int) $p['id'] ?>)
-                            </option>
+                            <option value="<?= (int) $p['id'] ?>"><?= e($p['full_name']) ?> (#<?= (int) $p['id'] ?>)</option>
                         <?php endforeach; ?>
                     </select>
                 </label>
                 <label>Студент:
                     <select name="student_id" class="pzk-field__input">
                         <?php foreach ($adminStudents as $s): ?>
-                            <option value="<?= (int) $s['id'] ?>">
-                                <?= e($s['full_name']) ?> · <?= e($s['group_name']) ?>
-                            </option>
+                            <option value="<?= (int) $s['id'] ?>"><?= e($s['full_name']) ?> · <?= e($s['group_name']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </label>
@@ -236,11 +424,7 @@ $typesMeta = project_types_meta();
                             </tr>
                         <?php endforeach; ?>
                         <?php if ($adminParentLinks === []): ?>
-                            <tr>
-                                <td colspan="3" class="pzk-table__empty">
-                                    Пока ни одна связка не создана.
-                                </td>
-                            </tr>
+                            <tr><td colspan="3" class="pzk-table__empty">Пока ни одна связка не создана.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -254,35 +438,12 @@ $typesMeta = project_types_meta();
                     <h2 class="panel__title">Уроки</h2>
                     <p class="panel__subtitle">Темы, даты и домашние задания. Порядковый номер — уникален.</p>
                 </div>
+                <a href="#add-lesson" class="pzk-btn pzk-btn--primary" data-open-details>
+                    ➕ Добавить
+                </a>
             </div>
 
-            <details class="pzk-details">
-                <summary class="pzk-details__summary">➕ Добавить урок</summary>
-                <form method="post" action="index.php?action=admin_lesson_save" class="pzk-form">
-                    <?= csrf_field() ?>
-                    <div class="pzk-form__grid">
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">№</span>
-                            <input class="pzk-field__input" type="number" name="ord" required min="1">
-                        </label>
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Дата</span>
-                            <input class="pzk-field__input" type="text" name="date_str" required placeholder="03.09">
-                        </label>
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Тема</span>
-                            <input class="pzk-field__input" type="text" name="topic" required>
-                        </label>
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Домашнее задание</span>
-                            <input class="pzk-field__input" type="text" name="homework">
-                        </label>
-                    </div>
-                    <button type="submit" class="pzk-btn pzk-btn--primary">Добавить</button>
-                </form>
-            </details>
-
-            <div class="pzk-table-wrap" style="margin-top: var(--space-md);">
+            <div class="pzk-table-wrap">
                 <table class="pzk-table pzk-table--lessons">
                     <thead>
                         <tr>
@@ -297,17 +458,18 @@ $typesMeta = project_types_meta();
                         <?php foreach ($adminLessons as $l): ?>
                             <tr>
                                 <td colspan="5" class="pzk-table__row-form">
-                                    <form method="post" action="index.php?action=admin_lesson_save" class="pzk-lesson-form">
+                                    <form method="post" action="index.php?action=admin_lesson_save"
+                                          class="pzk-lesson-form" autocomplete="off">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="id" value="<?= (int) $l['id'] ?>">
                                         <input class="pzk-field__input pzk-field__input--sm" name="ord" type="number"
-                                               value="<?= (int) $l['ord'] ?>" required>
+                                               value="<?= (int) $l['ord'] ?>" required autocomplete="off">
                                         <input class="pzk-field__input pzk-field__input--sm" name="date_str"
-                                               value="<?= e($l['date_str']) ?>" required>
+                                               value="<?= e($l['date_str']) ?>" required autocomplete="off">
                                         <input class="pzk-field__input pzk-field__input--sm" name="topic"
-                                               value="<?= e($l['topic']) ?>" required>
+                                               value="<?= e($l['topic']) ?>" required autocomplete="off">
                                         <input class="pzk-field__input pzk-field__input--sm" name="homework"
-                                               value="<?= e($l['homework']) ?>">
+                                               value="<?= e($l['homework']) ?>" autocomplete="off">
                                         <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Сохранить</button>
                                     </form>
                                     <form method="post" action="index.php?action=admin_lesson_delete"
@@ -321,15 +483,50 @@ $typesMeta = project_types_meta();
                             </tr>
                         <?php endforeach; ?>
                         <?php if ($adminLessons === []): ?>
-                            <tr>
-                                <td colspan="5" class="pzk-table__empty">
-                                    Уроков пока нет. Добавьте первый.
-                                </td>
-                            </tr>
+                            <tr><td colspan="5" class="pzk-table__empty">Уроков пока нет. Добавьте первый.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
             </div>
+
+            <details class="pzk-details" id="add-lesson" style="margin-top: var(--space-lg);">
+                <summary class="pzk-details__summary">➕ Добавить урок</summary>
+                <form method="post" action="index.php?action=admin_lesson_save"
+                      class="pzk-form" autocomplete="off">
+                    <?= csrf_field() ?>
+                    <div>
+                        <h3 class="pzk-form__title">Новый урок</h3>
+                        <p class="pzk-form__hint">
+                            Порядковый номер — уникальное число. Дата в свободном формате: 03.09, 12.10 и т.п.
+                        </p>
+                    </div>
+                    <div class="pzk-form__grid">
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">№</span>
+                            <input class="pzk-field__input" type="number" name="ord" required min="1"
+                                   autocomplete="off">
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Дата</span>
+                            <input class="pzk-field__input" type="text" name="date_str" required
+                                   placeholder="03.09" autocomplete="off">
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Тема</span>
+                            <input class="pzk-field__input" type="text" name="topic" required
+                                   placeholder="Например: Симметричные шифры" autocomplete="off">
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Домашнее задание</span>
+                            <input class="pzk-field__input" type="text" name="homework"
+                                   placeholder="Что задано к следующему занятию" autocomplete="off">
+                        </label>
+                    </div>
+                    <div class="pzk-form__actions">
+                        <button type="submit" class="pzk-btn pzk-btn--primary">Добавить урок</button>
+                    </div>
+                </form>
+            </details>
         </section>
 
     <?php elseif ($section === 'projects'): ?>
@@ -339,67 +536,13 @@ $typesMeta = project_types_meta();
                     <h2 class="panel__title">Проекты</h2>
                     <p class="panel__subtitle">Создание проектов, назначение участников, тип (оригинал/форк).</p>
                 </div>
+                <a href="#add-project" class="pzk-btn pzk-btn--primary" data-open-details>
+                    ➕ Добавить
+                </a>
             </div>
 
-            <details class="pzk-details">
-                <summary class="pzk-details__summary">➕ Создать проект</summary>
-                <form method="post" action="index.php?action=admin_project_create" class="pzk-form">
-                    <?= csrf_field() ?>
-                    <div class="pzk-form__grid">
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Название</span>
-                            <input class="pzk-field__input" type="text" name="title" required>
-                        </label>
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Тип</span>
-                            <select class="pzk-field__input" name="type">
-                                <?php foreach ($typesMeta as $code => $meta): ?>
-                                    <option value="<?= e($code) ?>"><?= e($meta['label']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </label>
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Родительский проект (для форка)</span>
-                            <select class="pzk-field__input" name="parent_id">
-                                <option value="0">—</option>
-                                <?php foreach ($adminProjects as $p): ?>
-                                    <option value="<?= (int) $p['id'] ?>">
-                                        #<?= (int) $p['id'] ?> · <?= e($p['title']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </label>
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">URL репозитория</span>
-                            <input class="pzk-field__input" type="url" name="repo_url" placeholder="https://gogs.example/...">
-                        </label>
-                    </div>
-
-                    <fieldset class="pzk-fieldset">
-                        <legend class="pzk-field__label">Участники</legend>
-                        <?php if ($adminStudents === []): ?>
-                            <p class="muted">Сначала создайте студентов в разделе «Пользователи».</p>
-                        <?php else: ?>
-                            <div class="pzk-checkbox-grid">
-                                <?php foreach ($adminStudents as $s): ?>
-                                    <label class="pzk-checkbox">
-                                        <input type="checkbox" name="students[]" value="<?= (int) $s['id'] ?>">
-                                        <?= e($s['full_name']) ?>
-                                        <?php if (!empty($s['alias'])): ?>
-                                            <code>(<?= e($s['alias']) ?>)</code>
-                                        <?php endif; ?>
-                                    </label>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php endif; ?>
-                    </fieldset>
-
-                    <button type="submit" class="pzk-btn pzk-btn--primary">Создать</button>
-                </form>
-            </details>
-
             <?php if ($adminProjects !== []): ?>
-                <div class="pzk-table-wrap" style="margin-top: var(--space-md);">
+                <div class="pzk-table-wrap">
                     <table class="pzk-table">
                         <thead>
                             <tr>
@@ -413,9 +556,7 @@ $typesMeta = project_types_meta();
                         </thead>
                         <tbody>
                             <?php foreach ($adminProjects as $p): ?>
-                                <?php
-                                $typeInfo = $typesMeta[$p['type']] ?? ['label' => $p['type'], 'color' => '#8b6914'];
-                                ?>
+                                <?php $typeInfo = $typesMeta[$p['type']] ?? ['label' => $p['type'], 'color' => '#8b6914']; ?>
                                 <tr>
                                     <td><?= (int) $p['id'] ?></td>
                                     <td><?= e($p['title']) ?></td>
@@ -438,7 +579,74 @@ $typesMeta = project_types_meta();
                         </tbody>
                     </table>
                 </div>
+            <?php else: ?>
+                <div class="uni-empty">Проектов пока нет. Добавьте первый.</div>
             <?php endif; ?>
+
+            <details class="pzk-details" id="add-project" style="margin-top: var(--space-lg);">
+                <summary class="pzk-details__summary">➕ Создать проект</summary>
+                <form method="post" action="index.php?action=admin_project_create"
+                      class="pzk-form" autocomplete="off">
+                    <?= csrf_field() ?>
+                    <div>
+                        <h3 class="pzk-form__title">Новый проект</h3>
+                        <p class="pzk-form__hint">
+                            Форк — это проект, основанный на другом. Укажите родителя, чтобы
+                            отслеживать связь. Ссылку на репозиторий заполняйте, если проект уже создан в Gogs.
+                        </p>
+                    </div>
+                    <div class="pzk-form__grid">
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Название</span>
+                            <input class="pzk-field__input" type="text" name="title" required
+                                   placeholder="Например: Шифр Цезаря с интерфейсом" autocomplete="off">
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Тип</span>
+                            <select class="pzk-field__input" name="type">
+                                <?php foreach ($typesMeta as $code => $meta): ?>
+                                    <option value="<?= e($code) ?>"><?= e($meta['label']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Родительский проект (для форка)</span>
+                            <select class="pzk-field__input" name="parent_id">
+                                <option value="0">—</option>
+                                <?php foreach ($adminProjects as $p): ?>
+                                    <option value="<?= (int) $p['id'] ?>">#<?= (int) $p['id'] ?> · <?= e($p['title']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">URL репозитория</span>
+                            <input class="pzk-field__input" type="url" name="repo_url"
+                                   placeholder="https://gogs.example/..." autocomplete="off">
+                        </label>
+                    </div>
+                    <fieldset class="pzk-fieldset">
+                        <legend>Участники</legend>
+                        <?php if ($adminStudents === []): ?>
+                            <p class="pzk-form__hint" style="margin:0;">
+                                Сначала создайте студентов в разделе «Пользователи».
+                            </p>
+                        <?php else: ?>
+                            <div class="pzk-checkbox-grid">
+                                <?php foreach ($adminStudents as $s): ?>
+                                    <label class="pzk-checkbox">
+                                        <input type="checkbox" name="students[]" value="<?= (int) $s['id'] ?>">
+                                        <?= e($s['full_name']) ?>
+                                        <?php if (!empty($s['alias'])): ?><code>(<?= e($s['alias']) ?>)</code><?php endif; ?>
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </fieldset>
+                    <div class="pzk-form__actions">
+                        <button type="submit" class="pzk-btn pzk-btn--primary">Создать проект</button>
+                    </div>
+                </form>
+            </details>
         </section>
 
     <?php elseif ($section === 'audit'): ?>
@@ -470,9 +678,7 @@ $typesMeta = project_types_meta();
                                 <td>
                                     <?php if (!empty($a['target_type'])): ?>
                                         <?= e($a['target_type']) ?>
-                                        <?php if (!empty($a['target_id'])): ?>
-                                            #<?= (int) $a['target_id'] ?>
-                                        <?php endif; ?>
+                                        <?php if (!empty($a['target_id'])): ?>#<?= (int) $a['target_id'] ?><?php endif; ?>
                                     <?php else: ?>
                                         <span style="color:var(--color-tertiary);">—</span>
                                     <?php endif; ?>
@@ -484,11 +690,7 @@ $typesMeta = project_types_meta();
                             </tr>
                         <?php endforeach; ?>
                         <?php if ($adminAudit === []): ?>
-                            <tr>
-                                <td colspan="6" class="pzk-table__empty">
-                                    Записей пока нет.
-                                </td>
-                            </tr>
+                            <tr><td colspan="6" class="pzk-table__empty">Записей пока нет.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -499,24 +701,10 @@ $typesMeta = project_types_meta();
 
 <style>
 /* =============================================================================
-   Локальные стили админки. Применяются только на страницах ?page=admin.
-   Не трогают prikaz.css, чтобы не менять вид других разделов.
+   Стили админки. Применяются только на ?page=admin.
    ============================================================================= */
 
-/* 1. Курсор на раскрывающихся блоках «➕ …» */
-.pzk-details__summary {
-    cursor: pointer;
-    transition: background-color 0.15s, color 0.15s;
-}
-.pzk-details__summary:hover {
-    background-color: rgba(139, 105, 20, 0.08);
-    color: #6b5010;
-}
-.pzk-details[open] .pzk-details__summary:hover {
-    color: #4a3a10;
-}
-
-/* 2. Отступы в таблицах — просторнее */
+/* ===== Таблицы ===== */
 .pzk-table th,
 .pzk-table td {
     padding: 14px 18px;
@@ -528,59 +716,25 @@ $typesMeta = project_types_meta();
     font-size: 0.72rem;
 }
 .pzk-table th:first-child,
-.pzk-table td:first-child {
-    padding-left: 22px;
-}
+.pzk-table td:first-child { padding-left: 22px; }
 .pzk-table th:last-child,
-.pzk-table td:last-child {
-    padding-right: 22px;
-}
+.pzk-table td:last-child  { padding-right: 22px; }
 
-/* Обёртка таблицы — с небольшим внутренним отступом от рамки */
 .pzk-table-wrap {
     overflow: auto;
     border: 1px solid rgba(26, 26, 26, 0.1);
     background: #fff;
 }
-.pzk-table-wrap > .pzk-table {
-    border: none;
-}
+.pzk-table-wrap > .pzk-table { border: none; }
 
-/* 3. Колонка действий — чтобы кнопки не прилипали друг к другу */
 .pzk-table td.pzk-table__actions {
     display: flex;
     gap: 8px;
-    align-items: center;
+    align-items: flex-start;
     flex-wrap: wrap;
 }
-.pzk-table td.pzk-table__actions form {
-    display: inline-block;
-}
+.pzk-table td.pzk-table__actions form { display: inline-block; margin: 0; }
 
-/* 4. Раскрывающийся «Сбросить пароль» в строке */
-.pzk-row-details summary {
-    list-style: none;
-    cursor: pointer;
-}
-.pzk-row-details summary::-webkit-details-marker {
-    display: none;
-}
-.pzk-row-details summary::marker {
-    content: '';
-}
-.pzk-row-details__form {
-    display: flex;
-    gap: 6px;
-    margin-top: 6px;
-    align-items: center;
-}
-.pzk-row-details__form input {
-    padding: 4px 8px;
-    font-size: 0.8rem;
-    min-width: 160px;
-}
-
-/* 5. «Пустая» строка-заглушка в таблице */
 .pzk-table__empty {
     text-align: center;
     color: var(--color-tertiary);
@@ -588,7 +742,6 @@ $typesMeta = project_types_meta();
     padding: 24px 18px !important;
 }
 
-/* 6. Уроки: строка таблицы как форма (без перекоса при большом количестве) */
 .pzk-table--lessons td.pzk-table__row-form {
     padding: 8px 22px;
     background: #fbfaf5;
@@ -600,12 +753,38 @@ $typesMeta = project_types_meta();
     align-items: center;
     width: 100%;
 }
-.pzk-lesson-delete {
-    display: block;
-    margin-top: 6px;
+.pzk-lesson-delete { display: block; margin-top: 6px; }
+
+.pzk-table td code {
+    background: rgba(139, 105, 20, 0.08);
+    padding: 2px 6px;
+    border-radius: 2px;
+    font-size: 0.85em;
+}
+.pzk-table code.pzk-ip {
+    background: rgba(26, 26, 26, 0.05);
+    font-size: 0.75rem;
 }
 
-/* 7. Инлайн-форма с привязкой родителя */
+.pzk-status {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.pzk-status--active   { background: rgba(22, 163, 74, 0.12); color: #15803d; }
+.pzk-status--inactive { background: rgba(220, 38, 38, 0.12); color: #b91c1c; }
+
+.pzk-hint-inline {
+    font-size: 0.78rem;
+    color: var(--color-tertiary);
+    padding: 6px 4px;
+    display: inline-block;
+}
+
+/* ===== Inline-форма привязки родителя ===== */
 .pzk-inline-form {
     display: flex;
     gap: 14px;
@@ -619,38 +798,283 @@ $typesMeta = project_types_meta();
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.85rem;
+    font-size: 0.88rem;
     color: var(--color-secondary);
 }
 
-/* 8. Код псевдонима и IP в ячейках */
-.pzk-table td code {
-    background: rgba(139, 105, 20, 0.08);
-    padding: 2px 6px;
-    border-radius: 2px;
-    font-size: 0.85em;
+/* ===== Редактирование в строке таблицы ===== */
+.pzk-row-details summary {
+    list-style: none;
+    cursor: pointer;
 }
-.pzk-table code.pzk-ip {
-    background: rgba(26, 26, 26, 0.05);
-    font-size: 0.75rem;
+.pzk-row-details summary::-webkit-details-marker { display: none; }
+.pzk-row-details summary::marker { content: ''; }
+.pzk-row-details__form {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.pzk-row-details__form input {
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    min-width: 160px;
+}
+.pzk-edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: #fff;
+    padding: 14px;
+    border: 1px solid rgba(26, 26, 26, 0.1);
+    min-width: 300px;
+    margin-top: 6px;
+}
+.pzk-edit-form .pzk-field { gap: 4px; }
+.pzk-edit-form .pzk-field__label { font-size: 0.78rem; }
+.pzk-edit-form .pzk-field__input { padding: 6px 10px; font-size: 0.85rem; }
+.pzk-edit-form .pzk-btn { align-self: flex-start; margin-top: 6px; }
+
+/* =============================================================================
+   ФОРМЫ В АДМИНКЕ — крупные, просторные, славянский стиль
+   ============================================================================= */
+
+.pzk-details {
+    background: #fbf7ec;
+    border: 1px solid #e8dcc0;
+    border-left: 4px solid #8b6914;
+    box-shadow: 0 2px 8px rgba(80, 60, 20, 0.06);
+    margin-bottom: var(--space-md);
+    transition: box-shadow 0.2s;
+}
+.pzk-details[open] {
+    box-shadow: 0 4px 18px rgba(80, 60, 20, 0.10);
 }
 
-/* 9. Узкая ширина — прокрутка таблиц без прилипания */
+.pzk-details__summary {
+    padding: 18px 24px;
+    font-family: 'Cormorant Garamond', 'Inter', serif;
+    font-size: 1.2rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: #6b5010;
+    background: linear-gradient(135deg, #fbf7ec 0%, #f5ecd5 100%);
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.2s, color 0.2s;
+}
+.pzk-details__summary::-webkit-details-marker { display: none; }
+.pzk-details__summary::marker { content: ''; }
+.pzk-details__summary:hover {
+    background: linear-gradient(135deg, #f5ecd5 0%, #efe2c0 100%);
+    color: #4a3a10;
+}
+.pzk-details[open] .pzk-details__summary {
+    border-bottom: 1px solid #e8dcc0;
+}
+
+.pzk-form__title {
+    font-family: 'Cormorant Garamond', 'Inter', serif;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #8b1a1a;
+    letter-spacing: 0.02em;
+    margin: 0 0 6px;
+    line-height: 1.2;
+}
+.pzk-form__hint {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.95rem;
+    color: #6b5d3f;
+    font-style: italic;
+    line-height: 1.55;
+    margin: 0;
+}
+
+.pzk-form {
+    padding: 26px 28px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+
+.pzk-form__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px 22px;
+}
+
+.pzk-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.pzk-field__label {
+    font-family: 'Cormorant Garamond', 'Inter', serif;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: none;
+    color: #6b5010;
+    margin: 0;
+}
+.pzk-field__input {
+    padding: 13px 16px;
+    border: 1px solid #d4c8a8;
+    background: #ffffff;
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 1.02rem;
+    color: #1a1a1a;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    border-radius: 2px;
+    width: 100%;
+}
+.pzk-field__input:focus {
+    outline: none;
+    border-color: #8b6914;
+    box-shadow: 0 0 0 3px rgba(139, 105, 20, 0.12);
+}
+.pzk-field__input::placeholder {
+    color: #b8a888;
+    font-style: italic;
+    font-size: 0.95rem;
+}
+.pzk-field__input--sm {
+    padding: 6px 10px;
+    font-size: 0.85rem;
+}
+
+.pzk-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.98rem;
+    color: #2d2d2d;
+    cursor: pointer;
+    padding: 4px 0;
+}
+.pzk-checkbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #8b6914;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.pzk-fieldset {
+    border: 1px solid #e8dcc0;
+    background: rgba(255, 255, 255, 0.6);
+    padding: 16px 20px 18px;
+    border-radius: 2px;
+    margin: 0;
+}
+.pzk-fieldset legend {
+    font-family: 'Cormorant Garamond', 'Inter', serif;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: #6b5010;
+    padding: 0 10px;
+}
+.pzk-checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 6px 18px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 6px 2px;
+}
+
+.pzk-btn {
+    padding: 10px 22px;
+    font-family: 'Cormorant Garamond', 'Inter', serif;
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: none;
+    border: 1px solid rgba(26, 26, 26, 0.2);
+    background: #fff;
+    color: #2d2d2d;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+    border-radius: 2px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1.2;
+}
+.pzk-btn:hover {
+    background: rgba(139, 105, 20, 0.06);
+    color: #1a1a1a;
+    border-color: rgba(139, 105, 20, 0.4);
+}
+.pzk-btn--primary {
+    background: #8b6914;
+    color: #fff;
+    border-color: #8b6914;
+    box-shadow: 0 2px 6px rgba(139, 105, 20, 0.2);
+}
+.pzk-btn--primary:hover {
+    background: #a67c00;
+    border-color: #a67c00;
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(139, 105, 20, 0.3);
+}
+.pzk-btn--sm {
+    padding: 7px 14px;
+    font-size: 0.88rem;
+    letter-spacing: 0.03em;
+}
+
+.pzk-form__actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+    padding-top: 18px;
+    border-top: 1px solid #e8dcc0;
+    margin-top: 4px;
+}
+
 @media (max-width: 900px) {
-    .pzk-table th,
-    .pzk-table td {
-        padding: 10px 12px;
-    }
-    .pzk-table th:first-child,
-    .pzk-table td:first-child {
-        padding-left: 14px;
-    }
-    .pzk-table th:last-child,
-    .pzk-table td:last-child {
-        padding-right: 14px;
-    }
-    .pzk-lesson-form {
-        grid-template-columns: 1fr;
-    }
+    .pzk-table th, .pzk-table td { padding: 10px 12px; }
+    .pzk-table th:first-child, .pzk-table td:first-child { padding-left: 14px; }
+    .pzk-table th:last-child,  .pzk-table td:last-child  { padding-right: 14px; }
+    .pzk-lesson-form { grid-template-columns: 1fr; }
+    .pzk-form { padding: 20px 18px; }
+    .pzk-form__title { font-size: 1.25rem; }
+    .pzk-details__summary { padding: 14px 16px; font-size: 1.05rem; }
+    .pzk-form__actions { justify-content: stretch; }
+    .pzk-form__actions .pzk-btn { width: 100%; justify-content: center; }
 }
 </style>
+
+<script>
+(function () {
+    'use strict';
+    document.querySelectorAll('[data-open-details]').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            var href = btn.getAttribute('href') || '';
+            if (href.charAt(0) !== '#') return;
+            var target = document.getElementById(href.slice(1));
+            if (!target) return;
+            e.preventDefault();
+            if (target.tagName === 'DETAILS') {
+                target.open = true;
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                setTimeout(function () {
+                    var first = target.querySelector('input, select, textarea');
+                    if (first) first.focus();
+                }, 350);
+            }
+        });
+    });
+})();
+</script>

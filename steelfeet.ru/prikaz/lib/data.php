@@ -2,8 +2,7 @@
 declare(strict_types=1);
 
 /**
- * Загрузка всех данных для рендера. Ожидает $currentUser и $viewRole.
- * Создаёт $pdo для совместимости (некоторые шаблоны/старые версии его ожидают).
+ * Загрузка данных для рендера. Ожидает $currentUser и $viewRole.
  */
 
 $pdo = db();
@@ -74,11 +73,8 @@ foreach ($studentsRows as $st) {
         if ($m === 'н') {
             $sAbsent++;
         } elseif (in_array($m, ['5', '4', '3', '2'], true)) {
-            $g = (int) $m;
-            $sSum += $g;
-            $sCount++;
-            $sDist[$g] = ($sDist[$g] ?? 0) + 1;
-            $sPresent++;
+            $g = (int) $m; $sSum += $g; $sCount++;
+            $sDist[$g] = ($sDist[$g] ?? 0) + 1; $sPresent++;
         } elseif ($m === '·') {
             $sPresent++;
         }
@@ -91,9 +87,7 @@ foreach ($studentsRows as $st) {
         'absent'     => $sAbsent,
         'present'    => $sPresent,
         'dist'       => $sDist,
-        'attendance' => ($sAbsent + $sPresent) > 0
-            ? round($sPresent / ($sAbsent + $sPresent) * 100, 1)
-            : null,
+        'attendance' => ($sAbsent + $sPresent) > 0 ? round($sPresent / ($sAbsent + $sPresent) * 100, 1) : null,
     ];
 }
 
@@ -128,7 +122,7 @@ if (in_array('teacher', $currentUser['roles'], true)) {
     $teacherProfile = $stmt->fetch() ?: null;
 }
 
-// ===== Визит родителя (учёт по дням) =====
+// ===== Визит родителя =====
 if ($viewRole === 'parent' && $parentProfile) {
     try {
         $stmt = $pdo->prepare('INSERT OR IGNORE INTO parent_visits (parent_id, visit_date) VALUES (:p, :d)');
@@ -136,7 +130,7 @@ if ($viewRole === 'parent' && $parentProfile) {
     } catch (Throwable $e) {}
 }
 
-// ===== Сводка визитов по студентам (для преподавателя) =====
+// ===== Сводка визитов =====
 $parentVisitsMap = [];
 try {
     $rows = $pdo->query(
@@ -157,16 +151,17 @@ try {
 $helpArticles = [];
 try {
     $stmt = $pdo->prepare(
-        "SELECT * FROM help_articles
-         WHERE role_visibility IN ('all', :r)
-         ORDER BY id"
+        "SELECT * FROM help_articles WHERE role_visibility IN ('all', :r) ORDER BY id"
     );
     $stmt->execute([':r' => $viewRole]);
     $helpArticles = $stmt->fetchAll();
 } catch (Throwable $e) {}
 
-// ===== Данные для админки =====
+// ===== Данные админки =====
 $adminUsers = $adminStudents = $adminParents = $adminLessons = $adminProjects = $adminParentLinks = $adminAudit = [];
+$adminAcademicYears = [];
+$adminCurrentYear = null;
+
 if ($viewRole === 'admin') {
     $adminUsers = $pdo->query(
         "SELECT u.*, GROUP_CONCAT(r.code, ',') AS roles
@@ -188,4 +183,15 @@ if ($viewRole === 'admin') {
          ORDER BY a.id DESC
          LIMIT 100'
     )->fetchAll();
+
+    $adminAcademicYears = $pdo->query(
+        'SELECT * FROM academic_years ORDER BY start_date DESC'
+    )->fetchAll();
+
+    foreach ($adminAcademicYears as $ay) {
+        if ((int) $ay['is_current'] === 1) {
+            $adminCurrentYear = $ay;
+            break;
+        }
+    }
 }

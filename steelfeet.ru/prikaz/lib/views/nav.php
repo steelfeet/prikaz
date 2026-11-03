@@ -1,20 +1,183 @@
 <?php
 declare(strict_types=1);
-/** Навигация. Ожидает $viewRole, $docsInboxCount (опционально). */
-$docsInbox = $docsInboxCount ?? 0;
-$currentPage = $_GET['page'] ?? 'dashboard';
+
+$tab = $_GET['tab'] ?? '';
+
+// ===== Учитель / Студент / Родитель — плоское меню =====
+if ($viewRole !== 'admin') {
+    if ($viewRole === 'teacher') {
+        $links = [
+            'journal'  => '📓 Журнал',
+            'projects' => '📋 Проекты',
+            'summary'  => '📊 Сводка',
+        ];
+    } else {
+        $links = [
+            'projects' => '📋 Мои проекты',
+            'journal'  => '📓 Журнал',
+        ];
+    }
+    echo '<nav class="mainnav"><span class="mainnav__caption">Разделы</span>';
+    foreach ($links as $k => $label) {
+        $active = ($tab === $k) ? 'active' : '';
+        if ($tab === '' && $k === array_key_first($links)) $active = 'active';
+        echo '<a class="' . $active . '" href="?page=' . e($viewRole) . '&tab=' . e($k) . '">' . e($label) . '</a>';
+    }
+    echo '</nav>';
+    return;
+}
+
+// ===== Админ =====
+$section = $_GET['section'] ?? 'academic_years';
+$academicSections = ['academic_years', 'groups', 'curriculum'];
+$isAcademicActive = in_array($section, $academicSections, true);
 ?>
+<style>
+/* ===== Выпадающий блок в главном меню (только админка) ===== */
+.mainnav__drop {
+    position: relative;
+    display: inline-block;
+}
+.mainnav__drop-btn {
+    padding: 0.65rem var(--space-sm, 1rem);
+    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-secondary, #2d2d2d);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-family: inherit;
+    user-select: none;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.mainnav__drop-btn:hover {
+    background: rgba(139, 105, 20, 0.1);
+    color: #1a1a1a;
+    border-bottom-color: var(--color-accent, #8b6914);
+}
+.mainnav__drop-btn.is-active {
+    background: rgba(139, 105, 20, 0.1);
+    border-bottom-color: var(--color-accent, #8b6914);
+    color: #1a1a1a;
+}
+.mainnav__drop-arrow {
+    font-size: 0.65em;
+    opacity: 0.6;
+    transition: transform 0.18s;
+}
+.mainnav__drop.is-open .mainnav__drop-arrow {
+    transform: rotate(180deg);
+}
+.mainnav__drop-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: #fff;
+    border: 1px solid rgba(26, 26, 26, 0.1);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+    min-width: 220px;
+    z-index: 100;
+    padding: 6px 0;
+    display: none;
+}
+.mainnav__drop.is-open .mainnav__drop-menu {
+    display: block;
+}
+.mainnav__drop-menu a {
+    display: block;
+    padding: 9px 18px;
+    font-size: 0.88rem;
+    color: var(--color-secondary, #2d2d2d);
+    border-left: 3px solid transparent;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+.mainnav__drop-menu a:hover {
+    background: rgba(139, 105, 20, 0.06);
+    border-left-color: var(--color-accent, #8b6914);
+    color: #1a1a1a;
+}
+.mainnav__drop-menu a.active {
+    background: rgba(139, 105, 20, 0.1);
+    border-left-color: var(--color-accent, #8b6914);
+    font-weight: 600;
+    color: #1a1a1a;
+}
+</style>
+
 <nav class="mainnav">
-    <span class="mainnav__caption">Разделы</span>
-    <a class="<?= $currentPage === 'dashboard' ? 'active' : '' ?>" href="?role=<?= e($viewRole) ?>">Главная</a>
-    <a class="<?= $currentPage === 'documents' ? 'active' : '' ?>" href="?page=documents&role=<?= e($viewRole) ?>">
-        Документы
-        <?php if ($docsInbox > 0): ?>
-            <span class="mainnav__badge"><?= (int) $docsInbox ?></span>
-        <?php endif; ?>
-    </a>
-    <a href="#">Взаимодействия</a>
-    <a href="#">Рабочий процесс</a>
-    <a href="#">Отчёты</a>
-    <a href="#">Аудит</a>
+    <span class="mainnav__caption">Админка</span>
+
+    <div class="mainnav__drop" id="academic-drop">
+        <button type="button"
+                class="mainnav__drop-btn <?= $isAcademicActive ? 'is-active' : '' ?>"
+                aria-haspopup="true"
+                aria-expanded="false">
+            📅 Учебный процесс
+            <span class="mainnav__drop-arrow" aria-hidden="true">▾</span>
+        </button>
+        <div class="mainnav__drop-menu" role="menu">
+            <a class="<?= $section === 'academic_years' ? 'active' : '' ?>"
+               href="?page=admin&section=academic_years" role="menuitem">Учебный год</a>
+            <a class="<?= $section === 'groups' ? 'active' : '' ?>"
+               href="?page=admin&section=groups" role="menuitem">Группы</a>
+            <a class="<?= $section === 'curriculum' ? 'active' : '' ?>"
+               href="?page=admin&section=curriculum" role="menuitem">Учебный план</a>
+        </div>
+    </div>
+
+    <a class="<?= $section === 'users'    ? 'active' : '' ?>" href="?page=admin&section=users">👥 Пользователи</a>
+    <a class="<?= $section === 'students' ? 'active' : '' ?>" href="?page=admin&section=students">🎒 Студенты</a>
+    <a class="<?= $section === 'parents'  ? 'active' : '' ?>" href="?page=admin&section=parents">👪 Родители</a>
+    <a class="<?= $section === 'lessons'  ? 'active' : '' ?>" href="?page=admin&section=lessons">📓 Уроки</a>
+    <a class="<?= $section === 'projects' ? 'active' : '' ?>" href="?page=admin&section=projects">📋 Проекты</a>
+    <a class="<?= $section === 'audit'    ? 'active' : '' ?>" href="?page=admin&section=audit">📜 Аудит</a>
 </nav>
+
+<script>
+(function () {
+    'use strict';
+
+    var drop = document.getElementById('academic-drop');
+    if (!drop) return;
+
+    var btn  = drop.querySelector('.mainnav__drop-btn');
+    var menu = drop.querySelector('.mainnav__drop-menu');
+
+    function close() {
+        drop.classList.remove('is-open');
+        btn.setAttribute('aria-expanded', 'false');
+    }
+    function open() {
+        drop.classList.add('is-open');
+        btn.setAttribute('aria-expanded', 'true');
+    }
+    function toggle() {
+        drop.classList.contains('is-open') ? close() : open();
+    }
+
+    btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        toggle();
+    });
+
+    // Клик по пункту — закрываем перед переходом
+    menu.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', function () {
+            close();
+        });
+    });
+
+    // Клик вне — закрыть
+    document.addEventListener('click', function (e) {
+        if (!drop.contains(e.target)) close();
+    });
+
+    // Esc — закрыть
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') close();
+    });
+})();
+</script>

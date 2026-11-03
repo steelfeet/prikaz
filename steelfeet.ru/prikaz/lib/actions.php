@@ -2,381 +2,376 @@
 declare(strict_types=1);
 
 /**
- * POST-обработчики: workflow (move/confirm/reject), документы, help feedback,
- * скачивание файлов. Подключается из index.php до data.php.
+ * POST-обработчики Приказа. Ожидает $currentUser и $action.
  */
 
-// ===== Переход фазы workflow =====
-if ($action === 'move_phase' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    header('Content-Type: application/json; charset=utf-8');
-    $input = json_decode(file_get_contents('php://input'), true) ?: [];
-    $projectId     = (int) ($input['project_id'] ?? 0);
-    $targetPhaseId = (int) ($input['target_phase_id'] ?? 0);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
+csrf_verify();
+$pdo = db();
 
-    $stmt = $pdo->prepare('SELECT * FROM interactions WHERE id = :id');
-    $stmt->execute([':id' => $projectId]);
-    $interaction = $stmt->fetch();
-    if (!$interaction) { echo json_encode(['ok' => false, 'error' => 'Проект не найден']); exit; }
+// ===== Logout =====
+if ($action === 'logout') {
+    auth_logout();
+    redirect('index.php?page=login');
+}
 
-    $stmt = $pdo->prepare('SELECT * FROM interaction_phases WHERE id = :id');
-    $stmt->execute([':id' => $targetPhaseId]);
-    $targetPhase = $stmt->fetch();
-    if (!$targetPhase) { echo json_encode(['ok' => false, 'error' => 'Фаза не найдена']); exit; }
-
-    $currentPhaseId = $interaction['phase_id'] !== null ? (int) $interaction['phase_id'] : 0;
-    $currentPhase = null;
-    if ($currentPhaseId > 0) {
-        $stmt = $pdo->prepare('SELECT * FROM interaction_phases WHERE id = :id');
-        $stmt->execute([':id' => $currentPhaseId]);
-        $currentPhase = $stmt->fetch();
+// ===== Смена своего пароля =====
+if ($action === 'change_own_password') {
+    $current = (string) ($_POST['current_password'] ?? '');
+    $new     = (string) ($_POST['new_password'] ?? '');
+    $repeat  = (string) ($_POST['repeat_password'] ?? '');
+    if (strlen($new) < PRIKAZ_PASSWORD_MIN) {
+        flash_set('danger', 'Пароль не короче ' . PRIKAZ_PASSWORD_MIN . ' символов.');
+        redirect('index.php?page=profile');
     }
-    $curNum = $currentPhase ? (int) $currentPhase['num'] : 0;
-    $tgtNum = (int) $targetPhase['num'];
-
-    if (abs($tgtNum - $curNum) !== 1) {
-        echo json_encode(['ok' => false, 'error' => 'Перемещать можно только на соседнюю фазу']);
-        exit;
+    if ($new !== $repeat) {
+        flash_set('danger', 'Пароли не совпадают.');
+        redirect('index.php?page=profile');
     }
+    $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id = :id');
+    $stmt->execute([':id' => (int) $currentUser['id']]);
+    $hash = (string) $stmt->fetchColumn();
+    if (!password_verify($current, $hash)) {
+        flash_set('danger', 'Текущий пароль неверен.');
+        redirect('index.php?page=profile');
+    }
+    $pdo->prepare('UPDATE users SET password_hash = :h, updated_at = :t WHERE id = :id')
+        ->execute([':h' => password_hash($new, PASSWORD_DEFAULT), ':t' => date('Y-m-d H:i:s'), ':id' => (int) $currentUser['id']]);
+    audit_log((int) $currentUser['id'], 'password_change', 'user', (int) $currentUser['id']);
+    flash_set('success', 'Пароль изменён.');
+    redirect('index.php?page=profile');
+}
 
-    if (phase_requires_confirmation($tgtNum)) {
-        $_SESSION['pending_phase_change'] = [
-            'project_id'        => $projectId,
-            'from_phase_id'     => $currentPhaseId,
-            'target_phase_id'   => $targetPhaseId,
-            'target_phase_num'  => $tgtNum,
-            'target_phase_name' => $targetPhase['name'],
-            'created_at'        => time(),
-        ];
-        $_SESSION['university_notification'] = [
-            'type'       => 'pending',
-            'message'    => 'ИТ Школа РТК предлагает перевести проект в фазу «'
-                          . $targetPhase['name'] . '». Требуется ваше подтверждение.',
-            'created_at' => time(),
-        ];
-        echo json_encode(['ok' => true, 'pending' => true]);
+// ===== Оценка =====
+if ($action === 'grade_set') {
+    if (!in_array('teacher', $currentUser['roles'], true) && !in_array('admin', $currentUser['roles'], true)) {
+        http_response_code(403); exit('Доступ запрещён');
+    }
+    $studentId = (int) ($_POST['student_id'] ?? 0);
+    $lessonId  = (int) ($_POST['lesson_id'] ?? 0);
+    $mark      = (string) ($_POST['mark'] ?? '');
+    $note      = trim((string) ($_POST['note'] ?? ''));
+    if (!valid_mark($mark) || $studentId <= 0 || $lessonId <= 0) {
+        flash_set('danger', 'Неверные данные.');
+        redirect('index.php?page=teacher&tab=journal');
+    }
+    $stmt = $pdo->prepare('SELECT id FROM grades WHERE student_id = :s AND lesson_id = :l');
+    $stmt->execute([':s' => $studentId, ':l' => $lessonId]);
+    $existing = $stmt->fetchColumn();
+    if ($existing !== false) {
+        $pdo->prepare('UPDATE grades SET mark = :m, note = :n, updated_by = :u, updated_at = :t WHERE id = :id')
+            ->execute([':m' => $mark, ':n' => $note !== '' ? $note : null, ':u' => (int) $currentUser['id'], ':t' => date('Y-m-d H:i:s'), ':id' => (int) $existing]);
+        audit_log((int) $currentUser['id'], 'grade_update', 'grade', (int) $existing);
     } else {
-        $stmt = $pdo->prepare('UPDATE interactions SET phase_id = :pid WHERE id = :id');
-        $stmt->execute([':pid' => $targetPhaseId, ':id' => $projectId]);
-        unset($_SESSION['pending_phase_change']);
-        $_SESSION['university_notification'] = [
-            'type'       => 'phase_changed',
-            'message'    => 'Проект переведён в фазу «' . $targetPhase['name'] . '».',
-            'created_at' => time(),
-        ];
-        echo json_encode(['ok' => true, 'pending' => false]);
+        $pdo->prepare('INSERT INTO grades (lesson_id, student_id, mark, note, updated_by) VALUES (:l, :s, :m, :n, :u)')
+            ->execute([':l' => $lessonId, ':s' => $studentId, ':m' => $mark, ':n' => $note !== '' ? $note : null, ':u' => (int) $currentUser['id']]);
+        audit_log((int) $currentUser['id'], 'grade_create', 'grade', (int) $pdo->lastInsertId());
     }
-    exit;
+    flash_set('success', 'Оценка сохранена.');
+    redirect('index.php?page=teacher&tab=journal');
 }
 
-if (($action === 'confirm_phase' || $action === 'reject_phase') && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!empty($_SESSION['pending_phase_change'])) {
-        $pending = $_SESSION['pending_phase_change'];
-        if ($action === 'confirm_phase') {
-            $stmt = $pdo->prepare('UPDATE interactions SET phase_id = :pid WHERE id = :id');
-            $stmt->execute([':pid' => $pending['target_phase_id'], ':id' => $pending['project_id']]);
-            $_SESSION['manager_notification'] = [
-                'type'       => 'confirmed',
-                'message'    => 'Вуз подтвердил перевод в фазу «' . $pending['target_phase_name'] . '».',
-                'created_at' => time(),
-            ];
-        } else {
-            $_SESSION['manager_notification'] = [
-                'type'       => 'rejected',
-                'message'    => 'Вуз отклонил перевод в фазу «' . $pending['target_phase_name'] . '».',
-                'created_at' => time(),
-            ];
-        }
-        unset($_SESSION['pending_phase_change'], $_SESSION['university_notification']);
+// ===== Смена фазы проекта =====
+if ($action === 'project_move_phase') {
+    if (!in_array('teacher', $currentUser['roles'], true) && !in_array('admin', $currentUser['roles'], true)) {
+        http_response_code(403); exit('Доступ запрещён');
     }
-    header('Location: index.php?role=university');
-    exit;
+    $projectId = (int) ($_POST['project_id'] ?? 0);
+    $phaseNum  = (int) ($_POST['phase_num'] ?? 0);
+    $note      = trim((string) ($_POST['note'] ?? ''));
+    try {
+        project_change_phase($projectId, $phaseNum, $note, (int) $currentUser['id']);
+        audit_log((int) $currentUser['id'], 'project_phase_change', 'project', $projectId);
+        flash_set('success', 'Фаза изменена.');
+    } catch (Throwable $e) {
+        flash_set('danger', $e->getMessage());
+    }
+    redirect('index.php?page=teacher&tab=projects');
 }
 
-// ===== Документы: смена статуса =====
-if ($action === 'doc_transition' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $docId = (int) ($_POST['document_id'] ?? 0);
-    $docAction = (string) ($_POST['doc_action'] ?? '');
-    $doc = doc_fetch_card($pdo, $docId);
-    if (!$doc) { header('Location: index.php?page=documents'); exit; }
+// ===== УЧЕБНЫЙ ГОД: сохранение (создание / редактирование) =====
+if ($action === 'admin_academic_year_save') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
 
-    $side = doc_side_for_role($viewRole);
-    if ($side === null) { header('Location: index.php'); exit; }
+    $id        = (int) ($_POST['id'] ?? 0);
+    $name      = trim((string) ($_POST['name'] ?? ''));
+    $startDate = trim((string) ($_POST['start_date'] ?? ''));
+    $endDate   = trim((string) ($_POST['end_date'] ?? ''));
+    $isCurrent = (isset($_POST['is_current']) && (string) $_POST['is_current'] === '1') ? 1 : 0;
 
-    $signatureCount = count(doc_signatures($pdo, $docId));
-    $available = doc_available_actions($doc['status'], $side, $signatureCount, $doc['type']);
-    $allowed = false;
-    foreach ($available as $a) { if ($a['action'] === $docAction) { $allowed = true; break; } }
-    if (!$allowed) {
-        $_SESSION['doc_flash'] = ['type' => 'danger', 'message' => 'Это действие недоступно в текущем статусе.'];
-        header('Location: index.php?page=document&id=' . $docId . '&role=' . $viewRole);
-        exit;
+    if ($name === '' || $startDate === '' || $endDate === '') {
+        flash_set('danger', 'Заполните название и обе даты.');
+        redirect('index.php?page=admin&section=academic_years');
+    }
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate) ||
+        !preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate)) {
+        flash_set('danger', 'Даты должны быть в формате YYYY-MM-DD.');
+        redirect('index.php?page=admin&section=academic_years');
+    }
+    if (strtotime($endDate) <= strtotime($startDate)) {
+        flash_set('danger', 'Дата окончания должна быть позже даты начала.');
+        redirect('index.php?page=admin&section=academic_years');
     }
 
     try {
-        [$newStatus, $newOwner] = doc_next_state($doc['status'], $side, $docAction, $doc['type'], $signatureCount);
-        $stmt = $pdo->prepare('UPDATE documents SET status = :s, owner_side = :o WHERE id = :id');
-        $stmt->execute([':s' => $newStatus, ':o' => $newOwner, ':id' => $docId]);
-
-        $stmt = $pdo->prepare(
-            'INSERT INTO document_events (document_id, actor_user_id, actor_side, action, from_status, to_status, comment)
-             VALUES (:d, :u, :s, :a, :from, :to, :c)'
-        );
-        $stmt->execute([
-            ':d'    => $docId,
-            ':u'    => (int) $currentUser['id'],
-            ':s'    => $side,
-            ':a'    => $docAction,
-            ':from' => $doc['status'],
-            ':to'   => $newStatus,
-            ':c'    => null,
-        ]);
-
-        $_SESSION['doc_flash'] = ['type' => 'success', 'message' => 'Документ обновлён.'];
-    } catch (Throwable $e) {
-        $_SESSION['doc_flash'] = ['type' => 'danger', 'message' => 'Ошибка: ' . $e->getMessage()];
-    }
-
-    header('Location: index.php?page=document&id=' . $docId . '&role=' . $viewRole);
-    exit;
-}
-
-// ===== Документы: подпись =====
-if ($action === 'doc_sign' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $docId = (int) ($_POST['document_id'] ?? 0);
-    $doc = doc_fetch_card($pdo, $docId);
-    if (!$doc) { header('Location: index.php?page=documents'); exit; }
-
-    $side = doc_side_for_role($viewRole);
-    if ($side === null) { header('Location: index.php'); exit; }
-
-    $signatureCount = count(doc_signatures($pdo, $docId));
-    $available = doc_available_actions($doc['status'], $side, $signatureCount, $doc['type']);
-    $isSign = false;
-    foreach ($available as $a) { if (!empty($a['is_sign'])) { $isSign = true; break; } }
-    if (!$isSign) {
-        $_SESSION['doc_flash'] = ['type' => 'danger', 'message' => 'Подпись сейчас недоступна.'];
-        header('Location: index.php?page=document&id=' . $docId . '&role=' . $viewRole);
-        exit;
-    }
-
-    // Уже подписал?
-    foreach (doc_signatures($pdo, $docId) as $s) {
-        if ((int) $s['user_id'] === (int) $currentUser['id']) {
-            $_SESSION['doc_flash'] = ['type' => 'danger', 'message' => 'Вы уже подписали этот документ.'];
-            header('Location: index.php?page=document&id=' . $docId . '&role=' . $viewRole);
-            exit;
+        $pdo->beginTransaction();
+        if ($isCurrent === 1) {
+            $pdo->exec('UPDATE academic_years SET is_current = 0');
         }
-    }
-
-    // Берём последнюю версию
-    $stmt = $pdo->prepare('SELECT * FROM document_versions WHERE document_id = :id ORDER BY version DESC LIMIT 1');
-    $stmt->execute([':id' => $docId]);
-    $lastVer = $stmt->fetch();
-    if (!$lastVer) {
-        $_SESSION['doc_flash'] = ['type' => 'danger', 'message' => 'Нельзя подписать: нет ни одной версии.'];
-        header('Location: index.php?page=document&id=' . $docId . '&role=' . $viewRole);
-        exit;
-    }
-
-    try {
-        $stmt = $pdo->prepare(
-            'INSERT INTO document_signatures (document_id, version_id, user_id, side, file_hash)
-             VALUES (:d, :v, :u, :s, :h)'
-        );
-        $stmt->execute([
-            ':d' => $docId,
-            ':v' => (int) $lastVer['id'],
-            ':u' => (int) $currentUser['id'],
-            ':s' => $side,
-            ':h' => $lastVer['file_hash'],
-        ]);
-
-        // Проверяем, стала ли подпись второй
-        $cnt = (int) $pdo->query("SELECT COUNT(*) FROM document_signatures WHERE document_id = " . (int) $docId)->fetchColumn();
-        $newStatus = $doc['status'];
-        $newOwner  = $doc['owner_side'];
-        if ($cnt >= 2) {
-            $newStatus = 'active';
-            $newOwner  = 'internal';
-        } else {
-            $newOwner = $side === 'internal' ? 'external' : 'internal';
-        }
-        $stmt = $pdo->prepare('UPDATE documents SET status = :s, owner_side = :o WHERE id = :id');
-        $stmt->execute([':s' => $newStatus, ':o' => $newOwner, ':id' => $docId]);
-
-        $stmt = $pdo->prepare(
-            'INSERT INTO document_events (document_id, version_id, actor_user_id, actor_side, action, from_status, to_status)
-             VALUES (:d, :v, :u, :s, :a, :from, :to)'
-        );
-        $stmt->execute([
-            ':d'    => $docId,
-            ':v'    => (int) $lastVer['id'],
-            ':u'    => (int) $currentUser['id'],
-            ':s'    => $side,
-            ':a'    => 'sign',
-            ':from' => $doc['status'],
-            ':to'   => $newStatus,
-        ]);
-
-        $_SESSION['doc_flash'] = ['type' => 'success', 'message' => 'Подпись применена.'];
-    } catch (Throwable $e) {
-        $_SESSION['doc_flash'] = ['type' => 'danger', 'message' => 'Ошибка: ' . $e->getMessage()];
-    }
-    header('Location: index.php?page=document&id=' . $docId . '&role=' . $viewRole);
-    exit;
-}
-
-// ===== Документы: загрузка новой версии =====
-if ($action === 'doc_upload_version' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $docId = (int) ($_POST['document_id'] ?? 0);
-    $comment = trim((string) ($_POST['comment'] ?? ''));
-    $doc = doc_fetch_card($pdo, $docId);
-    if (!$doc) { header('Location: index.php?page=documents'); exit; }
-
-    $side = doc_side_for_role($viewRole);
-    if ($side === null) { header('Location: index.php'); exit; }
-
-    if (empty($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
-        $_SESSION['doc_flash'] = ['type' => 'danger', 'message' => 'Ошибка загрузки файла.'];
-        header('Location: index.php?page=document&id=' . $docId . '&role=' . $viewRole);
-        exit;
-    }
-
-    try {
-        $file = $_FILES['file'];
-        $allowed = ['pdf','png','jpeg','jpg','zip','gzip','rar','doc','docx','xls','xlsx','gz'];
-        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        if (!in_array($ext, $allowed, true)) {
-            throw new RuntimeException('Недопустимое расширение файла.');
-        }
-        if ($file['size'] > 20 * 1024 * 1024) {
-            throw new RuntimeException('Файл больше 20 МБ.');
-        }
-
-        $sha = hash_file('sha256', $file['tmp_name']);
-
-        // Номер новой версии
-        $stmt = $pdo->prepare('SELECT COALESCE(MAX(version), 0) + 1 FROM document_versions WHERE document_id = :id');
-        $stmt->execute([':id' => $docId]);
-        $newVersion = (int) $stmt->fetchColumn();
-
-        $dir = __DIR__ . '/../storage/documents/' . $docId;
-        if (!is_dir($dir)) mkdir($dir, 0775, true);
-        $shortHash = substr($sha, 0, 8);
-        $fileName = "v{$newVersion}_{$shortHash}.{$ext}";
-        $target = $dir . '/' . $fileName;
-        if (!move_uploaded_file($file['tmp_name'], $target)) {
-            throw new RuntimeException('Не удалось сохранить файл на диск.');
-        }
-
-        $stmt = $pdo->prepare(
-            'INSERT INTO document_versions (document_id, version, file_path, file_name, file_size, file_hash, uploaded_by, comment)
-             VALUES (:d, :v, :p, :n, :s, :h, :u, :c)'
-        );
-        $stmt->execute([
-            ':d' => $docId,
-            ':v' => $newVersion,
-            ':p' => 'storage/documents/' . $docId . '/' . $fileName,
-            ':n' => $file['name'],
-            ':s' => (int) $file['size'],
-            ':h' => $sha,
-            ':u' => (int) $currentUser['id'],
-            ':c' => $comment !== '' ? $comment : null,
-        ]);
-        $versionId = (int) $pdo->lastInsertId();
-
-        $stmt = $pdo->prepare('UPDATE documents SET current_version_id = :v WHERE id = :id');
-        $stmt->execute([':v' => $versionId, ':id' => $docId]);
-
-        $stmt = $pdo->prepare(
-            'INSERT INTO document_events (document_id, version_id, actor_user_id, actor_side, action, comment)
-             VALUES (:d, :v, :u, :s, :a, :c)'
-        );
-        $stmt->execute([
-            ':d' => $docId,
-            ':v' => $versionId,
-            ':u' => (int) $currentUser['id'],
-            ':s' => $side,
-            ':a' => 'uploaded',
-            ':c' => $comment !== '' ? $comment : null,
-        ]);
-
-        $_SESSION['doc_flash'] = ['type' => 'success', 'message' => 'Версия v' . $newVersion . ' загружена.'];
-    } catch (Throwable $e) {
-        $_SESSION['doc_flash'] = ['type' => 'danger', 'message' => $e->getMessage()];
-    }
-    header('Location: index.php?page=document&id=' . $docId . '&role=' . $viewRole);
-    exit;
-}
-
-// ===== Документы: комментарий =====
-if ($action === 'doc_comment' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $docId = (int) ($_POST['document_id'] ?? 0);
-    $comment = trim((string) ($_POST['comment'] ?? ''));
-    $doc = doc_fetch_card($pdo, $docId);
-    if (!$doc) { header('Location: index.php?page=documents'); exit; }
-    $side = doc_side_for_role($viewRole);
-    if ($side === null) { header('Location: index.php'); exit; }
-    if ($comment !== '') {
-        $stmt = $pdo->prepare(
-            'INSERT INTO document_events (document_id, actor_user_id, actor_side, action, comment)
-             VALUES (:d, :u, :s, :a, :c)'
-        );
-        $stmt->execute([
-            ':d' => $docId,
-            ':u' => (int) $currentUser['id'],
-            ':s' => $side,
-            ':a' => 'comment',
-            ':c' => $comment,
-        ]);
-    }
-    header('Location: index.php?page=document&id=' . $docId . '&role=' . $viewRole);
-    exit;
-}
-
-// ===== Скачивание файла =====
-if ($action === 'doc_download' && isset($_GET['id'], $_GET['v'])) {
-    $docId = (int) $_GET['id'];
-    $verNum = (int) $_GET['v'];
-    $doc = doc_fetch_card($pdo, $docId);
-    if (!$doc) { http_response_code(404); exit('Документ не найден'); }
-    $side = doc_side_for_role($viewRole);
-    if ($side === null) { http_response_code(403); exit('Доступ запрещён'); }
-
-    $stmt = $pdo->prepare('SELECT * FROM document_versions WHERE document_id = :d AND version = :v LIMIT 1');
-    $stmt->execute([':d' => $docId, ':v' => $verNum]);
-    $ver = $stmt->fetch();
-    if (!$ver) { http_response_code(404); exit('Версия не найдена'); }
-
-    $absolute = __DIR__ . '/../' . $ver['file_path'];
-    if (!is_file($absolute)) { http_response_code(404); exit('Файл отсутствует на диске'); }
-
-    header('Content-Type: application/octet-stream');
-    header('Content-Disposition: attachment; filename="' . addslashes($ver['file_name']) . '"');
-    header('Content-Length: ' . filesize($absolute));
-    readfile($absolute);
-    exit;
-}
-
-// ===== Help feedback =====
-if ($action === 'help_feedback' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $articleId = (int) ($_POST['article_id'] ?? 0);
-    $body = trim((string) ($_POST['body'] ?? ''));
-    if ($articleId > 0 && $body !== '') {
-        try {
-            $stmt = $pdo->prepare(
-                'INSERT INTO help_feedback (article_id, user_id, body) VALUES (:a, :u, :b)'
-            );
-            $stmt->execute([
-                ':a' => $articleId,
-                ':u' => (int) $currentUser['id'],
-                ':b' => mb_substr($body, 0, 500),
+        if ($id > 0) {
+            $pdo->prepare(
+                'UPDATE academic_years
+                 SET name = :n, start_date = :s, end_date = :e, is_current = :c, updated_at = :t
+                 WHERE id = :id'
+            )->execute([
+                ':n' => $name, ':s' => $startDate, ':e' => $endDate,
+                ':c' => $isCurrent, ':t' => date('Y-m-d H:i:s'), ':id' => $id,
             ]);
-        } catch (Throwable $e) {
-            // тихо
+            audit_log((int) $currentUser['id'], 'academic_year_update', 'academic_year', $id);
+        } else {
+            $pdo->prepare(
+                'INSERT INTO academic_years (name, start_date, end_date, is_current)
+                 VALUES (:n, :s, :e, :c)'
+            )->execute([':n' => $name, ':s' => $startDate, ':e' => $endDate, ':c' => $isCurrent]);
+            $newId = (int) $pdo->lastInsertId();
+            audit_log((int) $currentUser['id'], 'academic_year_create', 'academic_year', $newId);
         }
+        $pdo->commit();
+        flash_set('success', 'Учебный год сохранён.');
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
     }
-    $back = $_SERVER['HTTP_REFERER'] ?? 'index.php';
-    header('Location: ' . $back);
-    exit;
+    redirect('index.php?page=admin&section=academic_years');
 }
+
+// ===== УЧЕБНЫЙ ГОД: удаление =====
+if ($action === 'admin_academic_year_delete') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $id = (int) ($_POST['id'] ?? 0);
+    try {
+        $stmt = $pdo->prepare('SELECT is_current FROM academic_years WHERE id = :id');
+        $stmt->execute([':id' => $id]);
+        $isCurrent = (int) $stmt->fetchColumn();
+        if ($isCurrent === 1) {
+            flash_set('danger', 'Нельзя удалить текущий учебный год. Сначала назначьте текущим другой.');
+            redirect('index.php?page=admin&section=academic_years');
+        }
+        $pdo->prepare('DELETE FROM academic_years WHERE id = :id')->execute([':id' => $id]);
+        audit_log((int) $currentUser['id'], 'academic_year_delete', 'academic_year', $id);
+        flash_set('success', 'Учебный год удалён.');
+    } catch (Throwable $e) {
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect('index.php?page=admin&section=academic_years');
+}
+
+// ===== УЧЕБНЫЙ ГОД: сделать текущим =====
+if ($action === 'admin_academic_year_set_current') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $id = (int) ($_POST['id'] ?? 0);
+    try {
+        $pdo->beginTransaction();
+        $pdo->exec('UPDATE academic_years SET is_current = 0');
+        $pdo->prepare('UPDATE academic_years SET is_current = 1, updated_at = :t WHERE id = :id')
+            ->execute([':t' => date('Y-m-d H:i:s'), ':id' => $id]);
+        $pdo->commit();
+        audit_log((int) $currentUser['id'], 'academic_year_set_current', 'academic_year', $id);
+        flash_set('success', 'Текущий учебный год обновлён.');
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect('index.php?page=admin&section=academic_years');
+}
+
+// ===== Пользователь: создание =====
+if ($action === 'admin_user_create') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $login    = trim((string) ($_POST['login'] ?? ''));
+    $fullName = trim((string) ($_POST['full_name'] ?? ''));
+    $roleCode = (string) ($_POST['role'] ?? '');
+    $password = (string) ($_POST['password'] ?? '');
+    $email    = trim((string) ($_POST['email'] ?? ''));
+    $group    = trim((string) ($_POST['group_name'] ?? ''));
+    $alias    = trim((string) ($_POST['alias'] ?? ''));
+    if ($login === '' || $fullName === '' || $password === '') {
+        flash_set('danger', 'Логин, ФИО и пароль обязательны.');
+        redirect('index.php?page=admin&section=users');
+    }
+    if (strlen($password) < PRIKAZ_PASSWORD_MIN) {
+        flash_set('danger', 'Пароль не короче ' . PRIKAZ_PASSWORD_MIN . ' символов.');
+        redirect('index.php?page=admin&section=users');
+    }
+    if (!in_array($roleCode, ['admin', 'teacher', 'student', 'parent'], true)) {
+        flash_set('danger', 'Неверная роль.');
+        redirect('index.php?page=admin&section=users');
+    }
+    if ($roleCode === 'student' && $group === '') {
+        flash_set('danger', 'Для студента укажите группу.');
+        redirect('index.php?page=admin&section=users');
+    }
+    try {
+        $pdo->beginTransaction();
+        $pdo->prepare('INSERT INTO users (login, full_name, email, password_hash, is_active) VALUES (:l, :n, :e, :h, 1)')
+            ->execute([':l' => $login, ':n' => $fullName, ':e' => $email !== '' ? $email : null, ':h' => password_hash($password, PASSWORD_DEFAULT)]);
+        $userId = (int) $pdo->lastInsertId();
+        $stmt = $pdo->prepare('SELECT id FROM roles WHERE code = :c');
+        $stmt->execute([':c' => $roleCode]);
+        $roleId = (int) $stmt->fetchColumn();
+        $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (:u, :r)')->execute([':u' => $userId, ':r' => $roleId]);
+        if ($roleCode === 'teacher') {
+            $pdo->prepare('INSERT INTO teachers (user_id, full_name) VALUES (:u, :n)')->execute([':u' => $userId, ':n' => $fullName]);
+        } elseif ($roleCode === 'student') {
+            $pdo->prepare('INSERT INTO students (user_id, full_name, group_name, alias) VALUES (:u, :n, :g, :a)')
+                ->execute([':u' => $userId, ':n' => $fullName, ':g' => $group, ':a' => $alias !== '' ? $alias : null]);
+        } elseif ($roleCode === 'parent') {
+            $pdo->prepare('INSERT INTO parents (user_id, full_name) VALUES (:u, :n)')->execute([':u' => $userId, ':n' => $fullName]);
+        }
+        $pdo->commit();
+        audit_log((int) $currentUser['id'], 'user_create', 'user', $userId);
+        flash_set('success', "Пользователь «{$login}» создан.");
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        flash_set('danger', 'Не удалось создать: ' . $e->getMessage());
+    }
+    redirect('index.php?page=admin&section=users');
+}
+
+if ($action === 'admin_user_toggle') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $userId = (int) ($_POST['user_id'] ?? 0);
+    if ($userId === (int) $currentUser['id']) {
+        flash_set('danger', 'Нельзя деактивировать самого себя.');
+        redirect('index.php?page=admin&section=users');
+    }
+    $pdo->prepare('UPDATE users SET is_active = 1 - is_active, updated_at = :t WHERE id = :id')
+        ->execute([':t' => date('Y-m-d H:i:s'), ':id' => $userId]);
+    audit_log((int) $currentUser['id'], 'user_toggle_active', 'user', $userId);
+    flash_set('success', 'Статус изменён.');
+    redirect('index.php?page=admin&section=users');
+}
+
+if ($action === 'admin_user_reset_password') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $userId   = (int) ($_POST['user_id'] ?? 0);
+    $password = (string) ($_POST['password'] ?? '');
+    if (strlen($password) < PRIKAZ_PASSWORD_MIN) {
+        flash_set('danger', 'Пароль не короче ' . PRIKAZ_PASSWORD_MIN . ' символов.');
+        redirect('index.php?page=admin&section=users');
+    }
+    $pdo->prepare('UPDATE users SET password_hash = :h, updated_at = :t WHERE id = :id')
+        ->execute([':h' => password_hash($password, PASSWORD_DEFAULT), ':t' => date('Y-m-d H:i:s'), ':id' => $userId]);
+    audit_log((int) $currentUser['id'], 'user_reset_password', 'user', $userId);
+    flash_set('success', 'Пароль сброшен.');
+    redirect('index.php?page=admin&section=users');
+}
+
+if ($action === 'admin_parent_link') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $parentId  = (int) ($_POST['parent_id'] ?? 0);
+    $studentId = (int) ($_POST['student_id'] ?? 0);
+    if ($parentId > 0 && $studentId > 0) {
+        $pdo->prepare('INSERT OR IGNORE INTO parent_student (parent_id, student_id) VALUES (:p, :s)')
+            ->execute([':p' => $parentId, ':s' => $studentId]);
+        audit_log((int) $currentUser['id'], 'parent_link', 'parent', $parentId, 'student=' . $studentId);
+        flash_set('success', 'Связка добавлена.');
+    }
+    redirect('index.php?page=admin&section=parents');
+}
+
+if ($action === 'admin_parent_unlink') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $parentId  = (int) ($_POST['parent_id'] ?? 0);
+    $studentId = (int) ($_POST['student_id'] ?? 0);
+    $pdo->prepare('DELETE FROM parent_student WHERE parent_id = :p AND student_id = :s')
+        ->execute([':p' => $parentId, ':s' => $studentId]);
+    audit_log((int) $currentUser['id'], 'parent_unlink', 'parent', $parentId, 'student=' . $studentId);
+    flash_set('success', 'Связка удалена.');
+    redirect('index.php?page=admin&section=parents');
+}
+
+if ($action === 'admin_lesson_save') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $id       = (int) ($_POST['id'] ?? 0);
+    $ord      = (int) ($_POST['ord'] ?? 0);
+    $date     = trim((string) ($_POST['date_str'] ?? ''));
+    $topic    = trim((string) ($_POST['topic'] ?? ''));
+    $homework = trim((string) ($_POST['homework'] ?? ''));
+    if ($ord <= 0 || $date === '' || $topic === '') {
+        flash_set('danger', 'Заполните номер, дату и тему.');
+        redirect('index.php?page=admin&section=lessons');
+    }
+    try {
+        if ($id > 0) {
+            $pdo->prepare('UPDATE lessons SET ord = :o, date_str = :d, topic = :t, homework = :h WHERE id = :id')
+                ->execute([':o' => $ord, ':d' => $date, ':t' => $topic, ':h' => $homework, ':id' => $id]);
+            audit_log((int) $currentUser['id'], 'lesson_update', 'lesson', $id);
+        } else {
+            $pdo->prepare('INSERT INTO lessons (ord, date_str, topic, homework) VALUES (:o, :d, :t, :h)')
+                ->execute([':o' => $ord, ':d' => $date, ':t' => $topic, ':h' => $homework]);
+            audit_log((int) $currentUser['id'], 'lesson_create', 'lesson', (int) $pdo->lastInsertId());
+        }
+        flash_set('success', 'Урок сохранён.');
+    } catch (Throwable $e) {
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect('index.php?page=admin&section=lessons');
+}
+
+if ($action === 'admin_lesson_delete') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $id = (int) ($_POST['id'] ?? 0);
+    $pdo->prepare('DELETE FROM lessons WHERE id = :id')->execute([':id' => $id]);
+    audit_log((int) $currentUser['id'], 'lesson_delete', 'lesson', $id);
+    flash_set('success', 'Урок удалён вместе с оценками.');
+    redirect('index.php?page=admin&section=lessons');
+}
+
+if ($action === 'admin_project_create') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $title     = trim((string) ($_POST['title'] ?? ''));
+    $type      = (string) ($_POST['type'] ?? 'original');
+    $parentId  = (int) ($_POST['parent_id'] ?? 0);
+    $repoUrl   = trim((string) ($_POST['repo_url'] ?? ''));
+    $students  = $_POST['students'] ?? [];
+    if (!is_array($students)) $students = [];
+    if ($title === '' || !isset(project_types_meta()[$type])) {
+        flash_set('danger', 'Заполните название и тип.');
+        redirect('index.php?page=admin&section=projects');
+    }
+    try {
+        $pdo->beginTransaction();
+        $pdo->prepare('INSERT INTO projects (title, type, parent_id, repo_url, created_by) VALUES (:t, :ty, :p, :r, :u)')
+            ->execute([':t' => $title, ':ty' => $type, ':p' => $parentId > 0 ? $parentId : null, ':r' => $repoUrl !== '' ? $repoUrl : null, ':u' => (int) $currentUser['id']]);
+        $pid = (int) $pdo->lastInsertId();
+        foreach ($students as $sid) {
+            $sid = (int) $sid;
+            if ($sid > 0) {
+                $pdo->prepare('INSERT OR IGNORE INTO project_students (project_id, student_id) VALUES (:p, :s)')->execute([':p' => $pid, ':s' => $sid]);
+            }
+        }
+        $phases = project_phases_meta();
+        $pdo->prepare('INSERT INTO project_history (project_id, phase_id, moved_by) VALUES (:p, :ph, :u)')
+            ->execute([':p' => $pid, ':ph' => $phases[1]['id'], ':u' => (int) $currentUser['id']]);
+        $pdo->commit();
+        audit_log((int) $currentUser['id'], 'project_create', 'project', $pid);
+        flash_set('success', 'Проект создан.');
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect('index.php?page=admin&section=projects');
+}
+
+if ($action === 'help_feedback') {
+    $articleId = (int) ($_POST['article_id'] ?? 0);
+    $body      = trim((string) ($_POST['body'] ?? ''));
+    if ($articleId > 0 && $body !== '') {
+        $pdo->prepare('INSERT INTO help_feedback (article_id, user_id, body) VALUES (:a, :u, :b)')
+            ->execute([':a' => $articleId, ':u' => (int) $currentUser['id'], ':b' => mb_substr($body, 0, 500)]);
+    }
+    redirect($_SERVER['HTTP_REFERER'] ?? 'index.php');
+}
+
+redirect('index.php');
