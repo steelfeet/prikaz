@@ -9,6 +9,7 @@ declare(strict_types=1);
  * CLI:
  *   php prikaz/db/init.php
  *   php prikaz/db/init.php --reset
+ *   php prikaz/db/init.php --admin=root --password=strong_pass
  *   PRIKAZ_CONFIG=/path/to/config.php php prikaz/db/init.php
  *
  * HTTP:
@@ -16,32 +17,26 @@ declare(strict_types=1);
  *   GET  /prikaz/db/init.php?reset=1      — страница подтверждения сброса
  *   POST /prikaz/db/init.php?reset=1      — сброс + создание
  *
+ * Учётные данные администратора читаются из config.php (ключи
+ * admin_login, admin_password, admin_fullname). В этом файле пароль
+ * не хранится — так безопаснее, потому что init.php потенциально
+ * доступен по HTTP, а config.php лежит вне webroot.
+ *
  * Защита от случайного сноса:
  *   — без ?reset=1 файл ничего не удаляет;
  *   — сброс через HTTP выполняется только методом POST;
  *   — если БД уже инициализирована и нет запроса на сброс, файл выходит
  *     с сообщением, не трогая данные.
  *
- * ⚠ Пароль администратора хранится константой ниже. После первого входа
- *   смените его через раздел «Профиль». Для продакшена удалите этот файл
- *   с сервера или закройте доступ к нему в .htaccess.
+ * После первой успешной инициализации закройте доступ к этому файлу:
+ * удалите его с сервера или верните Require all denied в db/.htaccess.
  */
 
-// =============================================================================
-// Пароль администратора — СМЕНИТЬ ПЕРЕД ДЕПЛОЕМ
-// =============================================================================
-const ADMIN_LOGIN    = 'admin';
-const ADMIN_PASSWORD = 'Admin#2026!PriKaz';
-const ADMIN_FULLNAME = 'Администратор';
-
-// =============================================================================
-// Окружение
-// =============================================================================
 $isCli  = (PHP_SAPI === 'cli');
 $isPost = (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST');
 
 // =============================================================================
-// Загрузка конфига (config.php лежит вне сайта, в prikaz-data/)
+// Загрузка конфига
 // =============================================================================
 $configCandidates = [
     getenv('PRIKAZ_CONFIG') ?: '',
@@ -54,15 +49,8 @@ foreach ($configCandidates as $cand) {
     if ($cand !== '' && is_file($cand)) { $configPath = $cand; break; }
 }
 
-if ($configPath === '') {
-    $msg = "config.php не найден.\nИскали:\n  " . implode("\n  ", array_filter($configCandidates))
-         . "\nЗадайте переменную окружения PRIKAZ_CONFIG=/полный/путь/config.php";
-    init_fail($msg, $isCli);
-}
-$cfg = require $configPath;
-
 // =============================================================================
-// Вспомогательные функции вывода
+// Вспомогательные функции вывода (объявлены до первого использования)
 // =============================================================================
 function init_head(string $title): void
 {
@@ -123,12 +111,67 @@ function init_out(string $msg, bool $isCli): void
 }
 
 // =============================================================================
+// Загрузка конфига (продолжение)
+// =============================================================================
+if ($configPath === '') {
+    init_fail(
+        "config.php не найден.\nИскали:\n  " . implode("\n  ", array_filter($configCandidates))
+        . "\nЗадайте переменную окружения PRIKAZ_CONFIG=/полный/путь/config.php",
+        $isCli
+    );
+}
+$cfg = require $configPath;
+if (!is_array($cfg)) {
+    init_fail("config.php должен возвращать массив.", $isCli);
+}
+
+// =============================================================================
+// Учётные данные администратора (из config, с CLI-override)
+// =============================================================================
+$adminLogin    = trim((string) ($cfg['admin_login']    ?? ''));
+$adminPassword = (string)      ($cfg['admin_password'] ?? '');
+$adminFullname = trim((string) ($cfg['admin_fullname'] ?? ''));
+
+$argvList = $_SERVER['argv'] ?? [];
+$reset = in_array('--reset', $argvList, true);
+foreach ($argvList as $a) {
+    if (str_starts_with($a, '--admin='))    $adminLogin    = trim(substr($a, 8));
+    if (str_starts_with($a, '--password=')) $adminPassword = substr($a, 11);
+    if (str_starts_with($a, '--fullname=')) $adminFullname = trim(substr($a, 11));
+}
+
+if ($adminFullname === '') $adminFullname = 'Администратор';
+
+// Валидация — ДО любых разрушительных действий
+if ($adminLogin === '') {
+    init_fail(
+        "В config.php не задан ключ 'admin_login'.\n"
+        . "Добавьте:\n    'admin_login'    => 'admin',\n    'admin_password' => 'ваш_пароль',\n    'admin_fullname' => 'Администратор',",
+        $isCli
+    );
+}
+if ($adminPassword === '') {
+    init_fail(
+        "В config.php не задан ключ 'admin_password'.\n"
+        . "Добавьте пароль администратора в config.php — в этом файле он больше не хранится.",
+        $isCli
+    );
+}
+$minLen = (int) ($cfg['password_min'] ?? 8);
+if (strlen($adminPassword) < $minLen) {
+    init_fail(
+        "Пароль администратора короче {$minLen} символов (password_min в config.php).\n"
+        . "Смените admin_password в config.php.",
+        $isCli
+    );
+}
+
+// =============================================================================
 // Путь к БД
 // =============================================================================
 $dbPath  = $cfg['db_path'];
 $dataDir = dirname($dbPath);
 
-// Если БД уже есть — проверяем, инициализирована ли она
 $dbExists = is_file($dbPath);
 $dbInitialized = false;
 $usersCount = 0;
@@ -143,7 +186,6 @@ if ($dbExists) {
             $usersCount = (int) $checkPdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
         }
     } catch (Throwable $e) {
-        // Не инициализирована или повреждена — попробуем пересоздать
         $dbInitialized = false;
     }
 }
@@ -152,10 +194,9 @@ if ($dbExists) {
 // Логика сброса
 // =============================================================================
 $resetRequested = $isCli
-    ? in_array('--reset', $_SERVER['argv'] ?? [], true)
+    ? $reset
     : (isset($_GET['reset']) && $_GET['reset'] === '1');
 
-// HTTP: GET ?reset=1 без POST — показать страницу подтверждения
 if (!$isCli && $resetRequested && !$isPost) {
     init_head('Сброс БД Приказа');
     echo '<h1>Сброс базы данных</h1>';
@@ -167,12 +208,11 @@ if (!$isCli && $resetRequested && !$isPost) {
     echo '<a href="init.php" class="btn btn--ghost">Отмена</a>';
     echo '</form>';
     echo '<p class="muted" style="margin-top:24px;">После сброса в БД будет создан администратор: <code>'
-        . htmlspecialchars(ADMIN_LOGIN, ENT_QUOTES, 'UTF-8') . '</code>. Пароль — из константы в этом файле.</p>';
+        . htmlspecialchars($adminLogin, ENT_QUOTES, 'UTF-8') . '</code> (пароль — из config.php).</p>';
     init_foot($isCli);
     exit;
 }
 
-// Если БД инициализирована и сброса не запрошено — ничего не делать
 if ($dbInitialized && !$resetRequested) {
     if ($isCli) {
         echo "БД уже инициализирована: {$dbPath}\n";
@@ -208,9 +248,12 @@ if (!is_dir($dataDir)) {
     }
 }
 if (!is_writable($dataDir)) {
-    init_fail("Нет прав на запись в директорию БД: {$dataDir}\n"
+    init_fail(
+        "Нет прав на запись в директорию БД: {$dataDir}\n"
         . "Проверьте права: chmod 775 " . escapeshellarg($dataDir)
-        . "\nВладелец директории должен совпадать с пользователем веб-сервера.", $isCli);
+        . "\nВладелец директории должен совпадать с пользователем веб-сервера.",
+        $isCli
+    );
 }
 
 // =============================================================================
@@ -440,24 +483,24 @@ init_out('✓ Фазы проектов: ' . count($phases), $isCli);
 // Администратор
 // =============================================================================
 $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE login = :l');
-$stmt->execute([':l' => ADMIN_LOGIN]);
+$stmt->execute([':l' => $adminLogin]);
 $adminCreated = false;
 
 if ((int) $stmt->fetchColumn() === 0) {
     $pdo->prepare(
         'INSERT INTO users (login, full_name, password_hash, is_active) VALUES (:l, :n, :h, 1)'
     )->execute([
-        ':l' => ADMIN_LOGIN,
-        ':n' => ADMIN_FULLNAME,
-        ':h' => password_hash(ADMIN_PASSWORD, PASSWORD_DEFAULT),
+        ':l' => $adminLogin,
+        ':n' => $adminFullname,
+        ':h' => password_hash($adminPassword, PASSWORD_DEFAULT),
     ]);
     $adminId = (int) $pdo->lastInsertId();
     $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (:u, 1)')
         ->execute([':u' => $adminId]);
     $adminCreated = true;
-    init_out('✓ Администратор создан: <code>' . ADMIN_LOGIN . '</code>', $isCli);
+    init_out('✓ Администратор создан: <code>' . htmlspecialchars($adminLogin, ENT_QUOTES, 'UTF-8') . '</code>', $isCli);
 } else {
-    init_out('→ Администратор <code>' . ADMIN_LOGIN . '</code> уже существует', $isCli);
+    init_out('→ Администратор <code>' . htmlspecialchars($adminLogin, ENT_QUOTES, 'UTF-8') . '</code> уже существует', $isCli);
 }
 
 // =============================================================================
@@ -507,13 +550,13 @@ if ($isCli) {
     }
     echo "\nГотово.\n";
     echo "  Вход: /prikaz/index.php?page=login\n";
-    echo "  Админ: " . ADMIN_LOGIN . " / " . ADMIN_PASSWORD . "\n";
+    echo "  Админ: {$adminLogin}\n";
+    echo "  Пароль: см. admin_password в config.php (в этом файле не хранится)\n";
     echo "  ⚠ Смените пароль после первого входа!\n";
     echo "  ⚠ Удалите или закройте init.php после инициализации!\n";
     exit(0);
 }
 
-// HTTP-результат
 ?>
 <div class="box box--success big">✓ Готово</div>
 
@@ -530,19 +573,21 @@ if ($isCli) {
 <h2>Учётная запись администратора</h2>
 <div class="box">
     <p style="margin:0;">
-        Логин: <code><?= htmlspecialchars(ADMIN_LOGIN, ENT_QUOTES, 'UTF-8') ?></code><br>
-        Пароль: <code><?= htmlspecialchars(ADMIN_PASSWORD, ENT_QUOTES, 'UTF-8') ?></code>
-        <?php if ($adminCreated): ?><br><span class="muted">(пароль только что создан)</span><?php endif; ?>
+        Логин: <code><?= htmlspecialchars($adminLogin, ENT_QUOTES, 'UTF-8') ?></code>
+        <?php if ($adminCreated): ?><br><span class="muted">(создан только что)</span><?php endif; ?>
+    </p>
+    <p class="muted" style="margin:8px 0 0;">
+        Пароль хранится в <code>config.php</code> как <code>admin_password</code>.
+        Этот файл лежит вне webroot и по HTTP не отдаётся — загляните в него через SSH/FTP.
     </p>
 </div>
 
 <div class="box box--danger">
     <strong>Обязательно сделайте два действия прямо сейчас:</strong>
     <ol style="margin:8px 0 0 20px;padding:0;">
-        <li>Перейдите ко входу и <strong>смените пароль</strong> администратора через «Профиль».</li>
+        <li>Войдите и <strong>смените пароль</strong> администратора через «Профиль».</li>
         <li><strong>Закройте init.php от повторного вызова</strong> — либо удалите файл с сервера,
-            либо верните <code>Require all denied</code> в <code>prikaz/db/.htaccess</code>
-            (сейчас там стоит исключение для этого файла).</li>
+            либо верните <code>Require all denied</code> в <code>prikaz/db/.htaccess</code>.</li>
     </ol>
 </div>
 

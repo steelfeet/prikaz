@@ -1,0 +1,279 @@
+/* =============================================================================
+   Страница входа Приказа — славянская стилистика.
+   Тёмно-красный (#8b1a1a) — буквы, золото (#8b6914) — линии и кнопка.
+   Шрифты: Ruslan Display (акценты), Cormorant Garamond (текст), Inter (форма).
+   ============================================================================= */
+
+.prizak-auth-body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background:
+        radial-gradient(circle at 18% 12%, rgba(184, 148, 78, 0.10), transparent 42%),
+        radial-gradient(circle at 82% 88%, rgba(139, 26, 26, 0.07), transparent 42%),
+        #f4eddc;
+    font-family: 'Inter', -apple-system, sans-serif;
+    color: #1a1a1a;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ===== Карточка — «лист старинной книги» ===== */
+.prizak-card {
+    position: relative;
+    width: 100%;
+    max-width: 540px;
+    padding: 52px 48px 40px;
+    background: #fbf7ec;
+    border: 1px solid #d4c8a8;
+    box-shadow:
+        inset 0 0 0 8px #fbf7ec,
+        inset 0 0 0 9px #e8dcc0,
+        0 12px 40px rgba(80, 60, 20, 0.15);
+}
+
+/* Уголки — тонкие орнаментальные скобки */
+.prizak-card::before,
+.prizak-card::after {
+    content: '';
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border: 1px solid #8b6914;
+    opacity: 0.65;
+}
+.prizak-card::before {
+    top: 14px;
+    left: 14px;
+    border-right: none;
+    border-bottom: none;
+}
+.prizak-card::after {
+    bottom: 14px;
+    right: 14px;
+    border-left: none;
+    border-top: none;
+}
+
+/* ===== Орнамент над заголовком ===== */
+.prizak-ornament-top {
+    text-align: center;
+    color: #b8944e;
+    font-size: 0.85rem;
+    margin-bottom: 10px;
+    letter-spacing: 1em;
+    padding-left: 1em;
+    user-select: none;
+}
+
+/* ===== Заголовок «Приказ» ===== */
+.prizak-title {
+    font-family: 'Ruslan Display', serif;
+    font-weight: 400;
+    font-size: 4.4rem;
+    line-height: 1;
+    text-align: center;
+    color: #8b1a1a;
+    letter-spacing: 0.08em;
+    margin: 0 0 8px;
+    text-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.7),
+        0 2px 6px rgba(139, 26, 26, 0.12);
+}
+
+.prizak-subtitle {
+    text-align: center;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1rem;
+    font-style: italic;
+    color: #6b5d3f;
+    letter-spacing: 0.04em;
+    margin: 0 0 4px;
+}
+
+/* ===== Разделитель с ромбом ===== */
+.prizak-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin: 22px 0;
+    color: #b8944e;
+    user-select: none;
+}
+.prizak-divider::before,
+.prizak-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #d4c8a8 30%, #d4c8a8 70%, transparent);
+}
+.prizak-divider span {
+    font-size: 0.8rem;
+    line-height: 1;
+    letter-spacing: 0;
+}
+
+/* ===== Расшифровка ПРИКАЗ ===== */
+.prizak-acronym {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 32px;
+    list-style: none;
+    margin: 0;
+    padding: 0 8px;
+    font-family: 'Cormorant Garamond', serif;
+}
+
+.prizak-acronym li {
+    display: flex;
+    align-items: baseline;
+    line-height: 1.1;
+}
+
+.prizak-acronym__letter {
+    font-family: 'Ruslan Display', serif;
+    font-size: 1.7rem;
+    line-height: 1;
+    color: #8b1a1a;
+    margin-right: 2px;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.prizak-acronym__word {
+    font-size: 1.1rem;
+    color: #2d2d2d;
+    letter-spacing: 0.01em;
+}
+
+/* ===== Ошибка входа ===== */
+.prizak-auth-error {
+    background: #fef0ee;
+    border-left: 3px solid #8b1a1a;
+    color: #8b1a1a;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    margin: 0 0 16px;
+    font-family: 'Inter', sans-serif;
+}
+
+/* ===== Форма ===== */
+.prizak-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin: 8px 0 16px;
+}
+
+.prizak-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.prizak-field__label {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: #6b5d3f;
+    font-weight: 500;
+}
+
+.prizak-field input {
+    padding: 11px 13px;
+    border: 1px solid #d4c8a8;
+    background: #fefcf6;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.95rem;
+    color: #1a1a1a;
+    transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+}
+.prizak-field input:focus {
+    outline: none;
+    border-color: #8b6914;
+    background: #ffffff;
+    box-shadow: 0 0 0 3px rgba(139, 105, 20, 0.12);
+}
+
+/* ===== Кнопка «Войти» — как переплётная золотинка ===== */
+.prizak-btn {
+    margin-top: 6px;
+    padding: 13px;
+    background: #8b6914;
+    color: #fff;
+    border: none;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.15rem;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background-color 0.2s, box-shadow 0.2s;
+}
+.prizak-btn:hover {
+    background: #a67c00;
+    box-shadow: 0 2px 8px rgba(139, 105, 20, 0.25);
+}
+.prizak-btn:active {
+    background: #6b5010;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+.prizak-btn:focus-visible {
+    outline: 2px solid #8b1a1a;
+    outline-offset: 2px;
+}
+
+/* ===== Подпись ===== */
+.prizak-note {
+    text-align: center;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 0.85rem;
+    font-style: italic;
+    color: #6b5d3f;
+    margin: 0 0 18px;
+}
+
+/* ===== Роли в системе ===== */
+.prizak-roles {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 12px;
+    padding-top: 16px;
+    border-top: 1px solid #e8dcc0;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 0.85rem;
+    font-variant: small-caps;
+    letter-spacing: 0.06em;
+    color: #8b7a5c;
+}
+.prizak-roles span[aria-hidden="true"] {
+    color: #b8944e;
+    font-weight: 600;
+}
+
+/* ===== Мобильный ===== */
+@media (max-width: 560px) {
+    .prizak-auth-body {
+        padding: 16px;
+    }
+    .prizak-card {
+        padding: 36px 24px 28px;
+    }
+    .prizak-title {
+        font-size: 3.2rem;
+    }
+    .prizak-acronym {
+        grid-template-columns: 1fr;
+        gap: 6px;
+        padding: 0;
+    }
+    .prizak-acronym__letter {
+        font-size: 1.5rem;
+    }
+    .prizak-acronym__word {
+        font-size: 1rem;
+    }
+}
