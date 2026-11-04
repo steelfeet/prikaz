@@ -744,6 +744,31 @@ $typesMeta = project_types_meta();
                                 </div>
                             </form>
                         </details>
+                        <details class="pzk-details" style="margin-top: var(--space-sm);">
+                            <summary class="pzk-details__summary">📋 Массовое добавление тем</summary>
+                            <form method="post" action="index.php?action=admin_curriculum_bulk_add"
+                                  class="pzk-form" autocomplete="off">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="subject_id" value="<?= (int) $subj['id'] ?>">
+                                <div>
+                                    <h3 class="pzk-form__title">Темы списком</h3>
+                                    <p class="pzk-form__hint">
+                                        Одна строка — одна тема. Пустые строки, невидимые символы и переносы
+                                        из PDF/Word игнорируются. Повторы в списке и уже имеющиеся в плане темы
+                                        добавляются один раз.
+                                        Нумерация продолжается от последней темы<?= $subj['topics'] !== [] ? ' (сейчас ' . count($subj['topics']) . ')' : '' ?>.
+                                    </p>
+                                </div>
+                                <label class="pzk-field">
+                                    <span class="pzk-field__label">Темы (<?= e($subj['short_name']) ?><?= $subj['semester_practice'] !== '' ? ' · ' . e($subj['semester_practice']) : '' ?>)</span>
+                                    <textarea class="pzk-field__textarea" name="topics" rows="12" required
+                                              placeholder="Введение в предмет&#10;Основные понятия и определения&#10;..."></textarea>
+                                </label>
+                                <div class="pzk-form__actions">
+                                    <button type="submit" class="pzk-btn pzk-btn--primary">Добавить темы</button>
+                                </div>
+                            </form>
+                        </details>
                     </div>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -1503,6 +1528,30 @@ $typesMeta = project_types_meta();
 .pzk-field__input--sm {
     padding: 6px 10px;
     font-size: 0.85rem;
+}
+.pzk-field__textarea {
+    padding: 13px 16px;
+    border: 1px solid #d4c8a8;
+    background: #ffffff;
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 1rem;
+    line-height: 1.55;
+    color: #1a1a1a;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    border-radius: 2px;
+    width: 100%;
+    min-height: 180px;
+    resize: vertical;
+    display: block;
+}
+.pzk-field__textarea:focus {
+    outline: none;
+    border-color: #8b6914;
+    box-shadow: 0 0 0 3px rgba(139, 105, 20, 0.12);
+}
+.pzk-field__textarea::placeholder {
+    color: #b8a888;
+    font-style: italic;
 }
 
 .pzk-checkbox {

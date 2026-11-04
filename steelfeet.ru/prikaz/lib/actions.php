@@ -462,6 +462,105 @@ if ($action === 'admin_curriculum_delete') {
     redirect('index.php?page=admin&section=curriculum');
 }
 
+// ===== УЧЕБНЫЙ ПЛАН: массовое добавление тем (одна строка — одна тема) =====
+if ($action === 'admin_curriculum_bulk_add') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $subjectId = (int) ($_POST['subject_id'] ?? 0);
+    $rawTopics = (string) ($_POST['topics'] ?? '');
+    $backUrl   = 'index.php?page=admin&section=curriculum';
+
+    if ($subjectId <= 0) {
+        flash_set('danger', 'Предмет не указан.');
+        redirect($backUrl);
+    }
+    $stmt = $pdo->prepare('SELECT id, short_name FROM subjects WHERE id = :id');
+    $stmt->execute([':id' => $subjectId]);
+    $subject = $stmt->fetch();
+    if (!$subject) {
+        flash_set('danger', 'Предмет не найден.');
+        redirect($backUrl);
+    }
+
+    // Разбор текста: одна строка — одна тема. Функция чинит кодировку,
+    // режет все виды переносов строк и отбрасывает невидимые символы,
+    // поэтому ни одна реальная тема не теряется молча.
+    $parsed = parse_topic_lines($rawTopics);
+
+    if ($parsed['invalid'] > 0) {
+        flash_set('danger', 'Не удалось разобрать вставленный текст: возможны символы другой кодировки. '
+            . 'Скопируйте текст как обычный текст (Ctrl+Shift+V) и попробуйте снова.');
+        redirect($backUrl);
+    }
+
+    // Уже существующие темы предмета — их не добавляем повторно.
+    $stmt = $pdo->prepare('SELECT topic FROM curriculum WHERE subject_id = :s');
+    $stmt->execute([':s' => $subjectId]);
+    $existingKeys = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $existingKeys[topic_key((string) $row['topic'])] = true;
+    }
+
+    $seenKeys   = [];
+    $toAdd      = [];
+    $dupBatch   = 0;
+    $dupExist   = 0;
+    $emptyLines = $parsed['empty'];
+
+    foreach ($parsed['topics'] as $topic) {
+        $key = topic_key($topic);
+        if ($key === '') { $emptyLines++; continue; }
+        if (isset($seenKeys[$key])) { $dupBatch++; continue; }    // дубль внутри списка
+        $seenKeys[$key] = true;
+        if (isset($existingKeys[$key])) { $dupExist++; continue; } // такая тема уже есть
+        $toAdd[] = $topic;
+    }
+
+    if ($toAdd === []) {
+        $skipped = $dupBatch + $dupExist;
+        if ($skipped > 0) {
+            flash_set('danger', 'Все непустые строки — дубликаты (повтор в списке: ' . $dupBatch
+                . ', уже есть в плане: ' . $dupExist . '). Новых тем не добавлено.');
+        } elseif ($emptyLines > 0) {
+            flash_set('danger', 'Все строки пустые или состоят только из пробелов и невидимых символов. Новых тем не добавлено.');
+        } else {
+            flash_set('danger', 'Список пуст: нечего добавлять.');
+        }
+        redirect($backUrl);
+    }
+
+    // Продолжаем нумерацию от последней темы этого предмета.
+    $stmt = $pdo->prepare('SELECT COALESCE(MAX(ord), 0) FROM curriculum WHERE subject_id = :s');
+    $stmt->execute([':s' => $subjectId]);
+    $ord = (int) $stmt->fetchColumn();
+
+    try {
+        $pdo->beginTransaction();
+        $ins = $pdo->prepare('INSERT INTO curriculum (subject_id, ord, topic) VALUES (:s, :o, :t)');
+        foreach ($toAdd as $topic) {
+            $ord++;
+            $ins->execute([':s' => $subjectId, ':o' => $ord, ':t' => $topic]);
+        }
+        $pdo->commit();
+        $skipped = $dupBatch + $dupExist;
+        audit_log((int) $currentUser['id'], 'curriculum_bulk_create', 'subject', $subjectId,
+            'added=' . count($toAdd) . ' skipped=' . $skipped . ' empty=' . $emptyLines);
+
+        $message = 'Добавлено тем: ' . count($toAdd) . ' (с № ' . ($ord - count($toAdd) + 1) . ' по № ' . $ord . ').';
+        if ($skipped > 0) {
+            $message .= ' Пропущено дубликатов: ' . $skipped . '.';
+        }
+        if ($emptyLines > 0) {
+            $message .= ' Пустых строк пропущено: ' . $emptyLines . '.';
+        }
+        flash_set('success', $message);
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect($backUrl);
+}
+
 // ===== ПОЛЬЗОВАТЕЛЬ: создание =====
 if ($action === 'admin_user_create') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
