@@ -634,12 +634,119 @@ $typesMeta = project_types_meta();
             <div class="panel__head">
                 <div>
                     <h2 class="panel__title">Учебный план</h2>
-                    <p class="panel__subtitle">Раздел в разработке.</p>
+                    <p class="panel__subtitle">
+                        Темы по предметам текущего учебного года.
+                        <?php if ($adminCurrentYear !== null): ?>
+                            Сейчас: <strong><?= e($adminCurrentYear['name']) ?></strong>.
+                        <?php endif; ?>
+                    </p>
                 </div>
             </div>
-            <div class="uni-empty">
-                Функционал появится в следующей версии. Пока уроки ведутся через раздел «Уроки».
-            </div>
+
+            <?php if ($adminCurrentYear === null): ?>
+                <div class="uni-empty">
+                    Сначала создайте учебный год и назначьте его текущим.
+                </div>
+            <?php elseif ($adminCurriculum === []): ?>
+                <div class="uni-empty">
+                    В текущем учебном году предметов пока нет.
+                    <a href="?page=admin&amp;section=subjects">Добавьте предметы</a> — после этого здесь появятся темы.
+                </div>
+            <?php else: ?>
+                <?php foreach ($adminCurriculum as $subj): ?>
+                    <div style="margin-bottom: var(--space-xl);">
+                        <div style="display:flex; align-items:baseline; gap:12px; margin-bottom: var(--space-sm); flex-wrap:wrap;">
+                            <h3 style="font-family:'Cormorant Garamond','Inter',serif; font-size:1.15rem; font-weight:600; color:#6b5010; margin:0;">
+                                <?= e($subj['short_name']) ?>
+                            </h3>
+                            <span style="font-size:0.82rem; color:var(--color-tertiary);">
+                                <?= e($subj['group_name']) ?>
+                                <?php if ($subj['semester_practice'] !== ''): ?>
+                                    · <?= e($subj['semester_practice']) ?>
+                                <?php endif; ?>
+                                · <?= (int) $subj['hours'] ?> ч.
+                            </span>
+                        </div>
+
+                        <div class="pzk-table-wrap">
+                            <table class="pzk-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:60px;">№</th>
+                                        <th>Тема</th>
+                                        <th style="width:200px;">Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($subj['topics'] as $t): ?>
+                                        <tr>
+                                            <td><?= (int) $t['ord'] ?></td>
+                                            <td><?= e($t['topic']) ?></td>
+                                            <td class="pzk-table__actions">
+                                                <details class="pzk-row-details">
+                                                    <summary class="pzk-btn pzk-btn--sm">Редактировать</summary>
+                                                    <form method="post" action="index.php?action=admin_curriculum_save"
+                                                          class="pzk-edit-form" autocomplete="off">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
+                                                        <input type="hidden" name="subject_id" value="<?= (int) $subj['id'] ?>">
+                                                        <label class="pzk-field">
+                                                            <span class="pzk-field__label">№</span>
+                                                            <input type="number" name="ord" value="<?= (int) $t['ord'] ?>"
+                                                                   required min="1" autocomplete="off"
+                                                                   class="pzk-field__input pzk-field__input--sm">
+                                                        </label>
+                                                        <label class="pzk-field">
+                                                            <span class="pzk-field__label">Тема</span>
+                                                            <input type="text" name="topic" value="<?= e($t['topic']) ?>"
+                                                                   required autocomplete="off"
+                                                                   class="pzk-field__input pzk-field__input--sm">
+                                                        </label>
+                                                        <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Сохранить</button>
+                                                    </form>
+                                                </details>
+                                                <form method="post" action="index.php?action=admin_curriculum_delete"
+                                                      onsubmit="return confirm('Удалить тему «<?= e($t['topic']) ?>»?');">
+                                                    <?= csrf_field() ?>
+                                                    <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
+                                                    <button type="submit" class="pzk-btn pzk-btn--sm">Удалить</button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    <?php if ($subj['topics'] === []): ?>
+                                        <tr><td colspan="3" class="pzk-table__empty">Тем пока нет. Добавьте первую.</td></tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <details class="pzk-details" style="margin-top: var(--space-sm);">
+                            <summary class="pzk-details__summary">➕ Добавить тему</summary>
+                            <form method="post" action="index.php?action=admin_curriculum_save"
+                                  class="pzk-form" autocomplete="off">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="subject_id" value="<?= (int) $subj['id'] ?>">
+                                <div class="pzk-form__grid">
+                                    <label class="pzk-field">
+                                        <span class="pzk-field__label">Порядковый номер</span>
+                                        <input class="pzk-field__input" type="number" name="ord" required min="1"
+                                               value="<?= count($subj['topics']) + 1 ?>" autocomplete="off">
+                                    </label>
+                                    <label class="pzk-field">
+                                        <span class="pzk-field__label">Тема</span>
+                                        <input class="pzk-field__input" type="text" name="topic" required
+                                               placeholder="Название темы" autocomplete="off">
+                                    </label>
+                                </div>
+                                <div class="pzk-form__actions">
+                                    <button type="submit" class="pzk-btn pzk-btn--primary">Добавить тему</button>
+                                </div>
+                            </form>
+                        </details>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
         </section>
 
     <?php elseif ($section === 'users'): ?>

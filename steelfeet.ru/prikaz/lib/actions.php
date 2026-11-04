@@ -401,6 +401,67 @@ if ($action === 'admin_subject_delete') {
     redirect($backUrl);
 }
 
+// ===== УЧЕБНЫЙ ПЛАН: сохранение темы =====
+if ($action === 'admin_curriculum_save') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $id      = (int) ($_POST['id'] ?? 0);
+    $subject = (int) ($_POST['subject_id'] ?? 0);
+    $ord     = (int) ($_POST['ord'] ?? 0);
+    $topic   = trim((string) ($_POST['topic'] ?? ''));
+
+    if ($subject <= 0) {
+        flash_set('danger', 'Предмет не указан.');
+        redirect('index.php?page=admin&section=curriculum');
+    }
+    if ($topic === '') {
+        flash_set('danger', 'Тема не может быть пустой.');
+        redirect('index.php?page=admin&section=curriculum');
+    }
+    if ($ord <= 0) {
+        flash_set('danger', 'Порядковый номер должен быть больше 0.');
+        redirect('index.php?page=admin&section=curriculum');
+    }
+
+    try {
+        if ($id > 0) {
+            $pdo->prepare(
+                'UPDATE curriculum SET ord = :o, topic = :t, updated_at = :u WHERE id = :id'
+            )->execute([':o' => $ord, ':t' => $topic, ':u' => date('Y-m-d H:i:s'), ':id' => $id]);
+            audit_log((int) $currentUser['id'], 'curriculum_update', 'curriculum', $id);
+            flash_set('success', 'Тема сохранена.');
+        } else {
+            $pdo->prepare(
+                'INSERT INTO curriculum (subject_id, ord, topic) VALUES (:s, :o, :t)'
+            )->execute([':s' => $subject, ':o' => $ord, ':t' => $topic]);
+            $newId = (int) $pdo->lastInsertId();
+            audit_log((int) $currentUser['id'], 'curriculum_create', 'curriculum', $newId);
+            flash_set('success', 'Тема добавлена.');
+        }
+    } catch (PDOException $e) {
+        if (str_contains($e->getMessage(), 'UNIQUE')) {
+            flash_set('danger', 'Тема с таким порядковым номером уже есть у этого предмета.');
+        } else {
+            flash_set('danger', 'Ошибка: ' . $e->getMessage());
+        }
+    }
+    redirect('index.php?page=admin&section=curriculum');
+}
+
+// ===== УЧЕБНЫЙ ПЛАН: удаление темы =====
+if ($action === 'admin_curriculum_delete') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $id = (int) ($_POST['id'] ?? 0);
+    try {
+        $pdo->prepare('DELETE FROM curriculum WHERE id = :id')->execute([':id' => $id]);
+        audit_log((int) $currentUser['id'], 'curriculum_delete', 'curriculum', $id);
+        flash_set('success', 'Тема удалена.');
+    } catch (Throwable $e) {
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect('index.php?page=admin&section=curriculum');
+}
+
 // ===== ПОЛЬЗОВАТЕЛЬ: создание =====
 if ($action === 'admin_user_create') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }

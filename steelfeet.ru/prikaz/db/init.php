@@ -524,6 +524,18 @@ CREATE TABLE IF NOT EXISTS subjects (
 
 CREATE INDEX IF NOT EXISTS idx_subjects_year  ON subjects(academic_year_id);
 CREATE INDEX IF NOT EXISTS idx_subjects_group ON subjects(group_id);
+
+CREATE TABLE IF NOT EXISTS curriculum (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    ord        INTEGER NOT NULL,
+    topic      TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (subject_id, ord)
+);
+
+CREATE INDEX IF NOT EXISTS idx_curriculum_subject ON curriculum(subject_id);
 SQL);
 
 init_out('✓ Схема применена', $isCli);
@@ -646,7 +658,7 @@ $tables = [
     'roles', 'users', 'user_roles', 'teachers', 'students', 'parents',
     'lessons', 'grades', 'project_phases', 'projects', 'project_students',
     'project_history', 'parent_visits', 'audit_log', 'help_articles',
-    'help_feedback', 'academic_years', 'groups', 'subjects',
+    'help_feedback', 'academic_years', 'groups', 'subjects', 'curriculum',
 ];
 $counts = [];
 foreach ($tables as $t) {

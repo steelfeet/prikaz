@@ -171,6 +171,7 @@ $adminAllGroups = [];
 $defaultSubjectYearId = 0;
 $defaultSubjectGroupId = 0;
 $adminCurrentYearSubjectCount = 0;
+$adminCurriculum = [];
 
 if ($viewRole === 'admin') {
     $adminUsers = $pdo->query(
@@ -302,5 +303,29 @@ if ($viewRole === 'admin') {
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM subjects WHERE academic_year_id = :y');
         $stmt->execute([':y' => (int) $adminCurrentYear['id']]);
         $adminCurrentYearSubjectCount = (int) $stmt->fetchColumn();
+    }
+
+    // ===== Учебный план: предметы года + их темы =====
+    $adminCurriculum = [];
+    if ($adminCurrentYear !== null) {
+        $stmt = $pdo->prepare(
+            'SELECT s.id, s.short_name, s.full_name, s.semester_practice, s.hours, g.name AS group_name
+             FROM subjects s
+             JOIN groups g ON g.id = s.group_id
+             WHERE s.academic_year_id = :y
+             ORDER BY g.name, s.short_name, s.semester_practice'
+        );
+        $stmt->execute([':y' => (int) $adminCurrentYear['id']]);
+        $subjectsRows = $stmt->fetchAll();
+
+        $topicStmt = $pdo->prepare(
+            'SELECT id, ord, topic FROM curriculum WHERE subject_id = :sid ORDER BY ord'
+        );
+        foreach ($subjectsRows as &$subj) {
+            $topicStmt->execute([':sid' => (int) $subj['id']]);
+            $subj['topics'] = $topicStmt->fetchAll();
+        }
+        unset($subj);
+        $adminCurriculum = $subjectsRows;
     }
 }
