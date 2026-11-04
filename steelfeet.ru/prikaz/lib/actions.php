@@ -281,6 +281,126 @@ if ($action === 'admin_group_delete') {
     redirect('index.php?page=admin&section=groups');
 }
 
+// ===== ПРЕДМЕТ: сохранение (создание / редактирование) =====
+if ($action === 'admin_subject_save') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $id             = (int) ($_POST['id'] ?? 0);
+    $academicYearId = (int) ($_POST['academic_year_id'] ?? 0);
+    $groupId        = (int) ($_POST['group_id'] ?? 0);
+    $shortName      = trim((string) ($_POST['short_name'] ?? ''));
+    $fullName       = trim((string) ($_POST['full_name'] ?? ''));
+    $hoursRaw       = trim((string) ($_POST['hours'] ?? ''));
+    $semester       = trim((string) ($_POST['semester_practice'] ?? ''));
+
+    // Возврат в тот же год, к которому относится предмет.
+    $backUrl = 'index.php?page=admin&section=subjects'
+        . ($academicYearId > 0 ? '&subject_year=' . $academicYearId : '');
+
+    if ($shortName === '') {
+        flash_set('danger', 'Укажите краткое название предмета.');
+        redirect($backUrl);
+    }
+    if ($fullName === '') {
+        flash_set('danger', 'Укажите полное название предмета.');
+        redirect($backUrl);
+    }
+    if ($groupId <= 0) {
+        flash_set('danger', 'Выберите группу.');
+        redirect($backUrl);
+    }
+    if ($hoursRaw === '') {
+        $hours = 0;
+    } elseif (!preg_match('/^\d{1,6}$/', $hoursRaw)) {
+        flash_set('danger', 'Количество часов — целое число от 0 до 999999.');
+        redirect($backUrl);
+    } else {
+        $hours = (int) $hoursRaw;
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT g.id, g.academic_year_id, g.name AS group_name, ay.name AS year_name
+         FROM groups g
+         JOIN academic_years ay ON ay.id = g.academic_year_id
+         WHERE g.id = :id'
+    );
+    $stmt->execute([':id' => $groupId]);
+    $group = $stmt->fetch();
+    if (!$group) {
+        flash_set('danger', 'Группа не найдена.');
+        redirect($backUrl);
+    }
+    if ($academicYearId > 0 && $academicYearId !== (int) $group['academic_year_id']) {
+        flash_set('danger', 'Группа «' . $group['group_name'] . '» относится к учебному году «'
+            . $group['year_name'] . '». Выберите год этой группы.');
+        redirect($backUrl);
+    }
+    $academicYearId = (int) $group['academic_year_id'];
+
+    try {
+        if ($id > 0) {
+            $pdo->prepare(
+                'UPDATE subjects
+                 SET academic_year_id = :y, group_id = :g, short_name = :sn, full_name = :fn,
+                     hours = :h, semester_practice = :sp, updated_at = :t
+                 WHERE id = :id'
+            )->execute([
+                ':y'  => $academicYearId,
+                ':g'  => $groupId,
+                ':sn' => $shortName,
+                ':fn' => $fullName,
+                ':h'  => $hours,
+                ':sp' => $semester,
+                ':t'  => date('Y-m-d H:i:s'),
+                ':id' => $id,
+            ]);
+            audit_log((int) $currentUser['id'], 'subject_update', 'subject', $id);
+            flash_set('success', 'Предмет сохранён.');
+        } else {
+            $pdo->prepare(
+                'INSERT INTO subjects (academic_year_id, group_id, short_name, full_name, hours, semester_practice)
+                 VALUES (:y, :g, :sn, :fn, :h, :sp)'
+            )->execute([
+                ':y'  => $academicYearId,
+                ':g'  => $groupId,
+                ':sn' => $shortName,
+                ':fn' => $fullName,
+                ':h'  => $hours,
+                ':sp' => $semester,
+            ]);
+            $newId = (int) $pdo->lastInsertId();
+            audit_log((int) $currentUser['id'], 'subject_create', 'subject', $newId);
+            flash_set('success', 'Предмет создан.');
+        }
+    } catch (PDOException $e) {
+        if (str_contains($e->getMessage(), 'UNIQUE')) {
+            flash_set('danger', 'Предмет с таким кратким названием и семестром / практикой уже есть у этой группы в этом году.');
+        } else {
+            flash_set('danger', 'Ошибка: ' . $e->getMessage());
+        }
+    }
+    redirect($backUrl);
+}
+
+// ===== ПРЕДМЕТ: удаление =====
+if ($action === 'admin_subject_delete') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $id = (int) ($_POST['id'] ?? 0);
+    $backUrl = 'index.php?page=admin&section=subjects';
+    try {
+        $stmt = $pdo->prepare('SELECT academic_year_id FROM subjects WHERE id = :id');
+        $stmt->execute([':id' => $id]);
+        $yearId = (int) $stmt->fetchColumn();
+        $pdo->prepare('DELETE FROM subjects WHERE id = :id')->execute([':id' => $id]);
+        audit_log((int) $currentUser['id'], 'subject_delete', 'subject', $id);
+        flash_set('success', 'Предмет удалён.');
+        if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
+    } catch (Throwable $e) {
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect($backUrl);
+}
+
 // ===== ПОЛЬЗОВАТЕЛЬ: создание =====
 if ($action === 'admin_user_create') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }

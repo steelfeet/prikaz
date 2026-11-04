@@ -164,6 +164,13 @@ $adminCurrentYear = null;
 $adminGroups = [];
 $adminGroupsFilterYear = 0;
 $defaultGroupYearId = 0;
+$adminSubjects = [];
+$adminSubjectsFilterYear = 0;
+$adminSubjectsFilterGroup = 0;
+$adminAllGroups = [];
+$defaultSubjectYearId = 0;
+$defaultSubjectGroupId = 0;
+$adminCurrentYearSubjectCount = 0;
 
 if ($viewRole === 'admin') {
     $adminUsers = $pdo->query(
@@ -237,5 +244,63 @@ if ($viewRole === 'admin') {
         $defaultGroupYearId = (int) $adminCurrentYear['id'];
     } elseif ($adminAcademicYears !== []) {
         $defaultGroupYearId = (int) $adminAcademicYears[0]['id'];
+    }
+
+    // ===== Предметы =====
+    // Фильтры такие же, как у групп: по умолчанию — текущий учебный год,
+    // subject_year=0 / subject_group=0 — «Все».
+    if (isset($_GET['subject_year'])) {
+        $adminSubjectsFilterYear = (int) $_GET['subject_year'];
+    } elseif ($adminCurrentYear !== null) {
+        $adminSubjectsFilterYear = (int) $adminCurrentYear['id'];
+    } elseif ($adminAcademicYears !== []) {
+        $adminSubjectsFilterYear = (int) $adminAcademicYears[0]['id'];
+    } else {
+        $adminSubjectsFilterYear = 0;
+    }
+    $adminSubjectsFilterGroup = isset($_GET['subject_group']) ? (int) $_GET['subject_group'] : 0;
+
+    $sql = 'SELECT s.*,
+                   ay.name     AS year_name,
+                   ay.is_current AS year_is_current,
+                   g.name      AS group_name
+            FROM subjects s
+            JOIN academic_years ay ON ay.id = s.academic_year_id
+            JOIN groups g          ON g.id = s.group_id';
+    $params = [];
+    if ($adminSubjectsFilterYear > 0) {
+        $sql .= ' WHERE s.academic_year_id = :y';
+        $params[':y'] = $adminSubjectsFilterYear;
+    }
+    if ($adminSubjectsFilterGroup > 0) {
+        $sql .= ($params === [] ? ' WHERE' : ' AND') . ' s.group_id = :g';
+        $params[':g'] = $adminSubjectsFilterGroup;
+    }
+    $sql .= ' ORDER BY ay.start_date DESC, g.name, s.short_name, s.semester_practice';
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $adminSubjects = $stmt->fetchAll();
+
+    // Все группы (с названием года) — для селектов «Группа» в фильтрах и формах.
+    $adminAllGroups = $pdo->query(
+        'SELECT g.id, g.name, g.academic_year_id, ay.name AS year_name
+         FROM groups g
+         JOIN academic_years ay ON ay.id = g.academic_year_id
+         ORDER BY ay.start_date DESC, g.name'
+    )->fetchAll();
+
+    if ($adminSubjectsFilterYear > 0) {
+        $defaultSubjectYearId = $adminSubjectsFilterYear;
+    } elseif ($adminCurrentYear !== null) {
+        $defaultSubjectYearId = (int) $adminCurrentYear['id'];
+    } elseif ($adminAcademicYears !== []) {
+        $defaultSubjectYearId = (int) $adminAcademicYears[0]['id'];
+    }
+    $defaultSubjectGroupId = $adminSubjectsFilterGroup;
+
+    if ($adminCurrentYear !== null) {
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM subjects WHERE academic_year_id = :y');
+        $stmt->execute([':y' => (int) $adminCurrentYear['id']]);
+        $adminCurrentYearSubjectCount = (int) $stmt->fetchColumn();
     }
 }

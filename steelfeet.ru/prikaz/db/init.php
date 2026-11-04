@@ -508,6 +508,22 @@ CREATE TABLE IF NOT EXISTS groups (
 );
 
 CREATE INDEX IF NOT EXISTS idx_groups_year ON groups(academic_year_id);
+
+CREATE TABLE IF NOT EXISTS subjects (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    academic_year_id  INTEGER NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
+    group_id          INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    short_name        TEXT NOT NULL,
+    full_name         TEXT NOT NULL,
+    hours             INTEGER NOT NULL DEFAULT 0,
+    semester_practice TEXT NOT NULL DEFAULT '',
+    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (academic_year_id, group_id, short_name, semester_practice)
+);
+
+CREATE INDEX IF NOT EXISTS idx_subjects_year  ON subjects(academic_year_id);
+CREATE INDEX IF NOT EXISTS idx_subjects_group ON subjects(group_id);
 SQL);
 
 init_out('✓ Схема применена', $isCli);
@@ -630,7 +646,7 @@ $tables = [
     'roles', 'users', 'user_roles', 'teachers', 'students', 'parents',
     'lessons', 'grades', 'project_phases', 'projects', 'project_students',
     'project_history', 'parent_visits', 'audit_log', 'help_articles',
-    'help_feedback', 'academic_years', 'groups',
+    'help_feedback', 'academic_years', 'groups', 'subjects',
 ];
 $counts = [];
 foreach ($tables as $t) {
