@@ -627,6 +627,151 @@ if ($action === 'admin_user_create') {
     redirect('index.php?page=admin&section=users');
 }
 
+// ===== РАСПИСАНИЕ: сохранение (перезапись) =====
+if ($action === 'admin_schedule_save') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $groupId   = (int) ($_POST['group_id'] ?? 0);
+    $backUrl   = 'index.php?page=admin&section=schedule' . ($groupId > 0 ? '&schedule_group=' . $groupId : '');
+
+    if ($groupId <= 0) {
+        flash_set('danger', 'Выберите группу.');
+        redirect($backUrl);
+    }
+
+    // Проверим, что группа существует.
+    $stmt = $pdo->prepare('SELECT id, name, academic_year_id FROM groups WHERE id = :id');
+    $stmt->execute([':id' => $groupId]);
+    $group = $stmt->fetch();
+    if (!$group) {
+        flash_set('danger', 'Группа не найдена.');
+        redirect($backUrl);
+    }
+
+    // Парсим ячейки из формы.
+    $rawCells = $_POST['cell'] ?? [];
+    if (!is_array($rawCells)) {
+        flash_set('danger', 'Нет данных.');
+        redirect($backUrl);
+    }
+
+    // Множество допустимых предметов группы — чтобы не гонять запрос на каждую ячейку.
+    $stmt = $pdo->prepare('SELECT id FROM subjects WHERE group_id = :g');
+    $stmt->execute([':g' => $groupId]);
+    $allowedSubjectIds = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $allowedSubjectIds[(int) $row['id']] = true;
+    }
+
+    $toInsert       = [];
+    $duplicates     = 0;
+    $invalidSubject = 0;
+    $seen           = [];
+    $validTypes     = schedule_lesson_types();
+    $maxPerCell     = schedule_max_per_cell();
+
+    for ($weekday = 1; $weekday <= 6; $weekday++) {
+        if (!isset($rawCells[$weekday]) || !is_array($rawCells[$weekday])) continue;
+        for ($lesson = 1; $lesson <= 9; $lesson++) {
+            if (!isset($rawCells[$weekday][$lesson]) || !is_array($rawCells[$weekday][$lesson])) continue;
+
+            $position = 0;
+            foreach ($rawCells[$weekday][$lesson] as $cellData) {
+                if (!is_array($cellData)) continue;
+                $subjectId  = (int) ($cellData['subject_id'] ?? 0);
+                $lessonType = trim((string) ($cellData['lesson_type'] ?? ''));
+
+                // Пустая строка формы — просто не занятие.
+                if ($subjectId <= 0 && $lessonType === '') continue;
+                if ($subjectId <= 0) { $invalidSubject++; continue; }
+                if (!isset($validTypes[$lessonType])) { $invalidSubject++; continue; }
+
+                // Предмет должен принадлежать этой группе.
+                if (!isset($allowedSubjectIds[$subjectId])) { $invalidSubject++; continue; }
+
+                // Один и тот же предмет+тип в одной ячейке — дубль.
+                $dupKey = $weekday . ':' . $lesson . ':' . $subjectId . ':' . $lessonType;
+                if (isset($seen[$dupKey])) { $duplicates++; continue; }
+                $seen[$dupKey] = true;
+
+                if ($position >= $maxPerCell) { $duplicates++; continue; }
+                $position++;
+
+                $toInsert[] = [
+                    'group_id'    => $groupId,
+                    'weekday'     => $weekday,
+                    'lesson_num'  => $lesson,
+                    'position'    => $position,
+                    'subject_id'  => $subjectId,
+                    'lesson_type' => $lessonType,
+                ];
+            }
+        }
+    }
+
+    try {
+        $pdo->beginTransaction();
+        // Удаляем старые записи группы.
+        $pdo->prepare('DELETE FROM schedule_entries WHERE group_id = :g')
+            ->execute([':g' => $groupId]);
+
+        if ($toInsert !== []) {
+            $ins = $pdo->prepare(
+                'INSERT INTO schedule_entries (group_id, weekday, lesson_num, position, subject_id, lesson_type)
+                 VALUES (:g, :wd, :ln, :pos, :si, :lt)'
+            );
+            foreach ($toInsert as $row) {
+                $ins->execute([
+                    ':g' => $row['group_id'],
+                    ':wd' => $row['weekday'],
+                    ':ln' => $row['lesson_num'],
+                    ':pos' => $row['position'],
+                    ':si' => $row['subject_id'],
+                    ':lt' => $row['lesson_type'],
+                ]);
+            }
+        }
+
+        $pdo->commit();
+        audit_log((int) $currentUser['id'], 'schedule_save', 'group', $groupId,
+            'entries=' . count($toInsert) . ' dupes=' . $duplicates . ' invalid=' . $invalidSubject);
+
+        $msg = 'Расписание группы «' . $group['name'] . '» сохранено (' . count($toInsert) . ' записей).';
+        if ($duplicates > 0) $msg .= ' Пропущено дубликатов: ' . $duplicates . '.';
+        if ($invalidSubject > 0) $msg .= ' Пропущено записей с неверным предметом: ' . $invalidSubject . '.';
+        flash_set('success', $msg);
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect($backUrl);
+}
+
+// ===== РАСПИСАНИЕ: очистка группы =====
+if ($action === 'admin_schedule_clear') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $groupId = (int) ($_POST['group_id'] ?? 0);
+    $backUrl = 'index.php?page=admin&section=schedule' . ($groupId > 0 ? '&schedule_group=' . $groupId : '');
+
+    if ($groupId <= 0) {
+        flash_set('danger', 'Выберите группу.');
+        redirect($backUrl);
+    }
+
+    try {
+        $stmt = $pdo->prepare('SELECT name FROM groups WHERE id = :id');
+        $stmt->execute([':id' => $groupId]);
+        $name = (string) $stmt->fetchColumn();
+
+        $pdo->prepare('DELETE FROM schedule_entries WHERE group_id = :g')->execute([':g' => $groupId]);
+        audit_log((int) $currentUser['id'], 'schedule_clear', 'group', $groupId);
+        flash_set('success', 'Расписание группы «' . $name . '» очищено.');
+    } catch (Throwable $e) {
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect($backUrl);
+}
+
 // ===== ПОЛЬЗОВАТЕЛЬ: блокировка / разблокировка =====
 if ($action === 'admin_user_toggle') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }

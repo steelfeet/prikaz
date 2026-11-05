@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 $section = $_GET['section'] ?? 'academic_years';
-if (!in_array($section, ['academic_years', 'groups', 'subjects', 'curriculum', 'users', 'students', 'parents', 'lessons', 'projects', 'audit'], true)) {
+if (!in_array($section, ['academic_years', 'groups', 'subjects', 'curriculum', 'schedule', 'users', 'students', 'parents', 'lessons', 'projects', 'audit'], true)) {
     $section = 'academic_years';
 }
 $flash = flash_get();
@@ -771,6 +771,129 @@ $typesMeta = project_types_meta();
                         </details>
                     </div>
                 <?php endforeach; ?>
+            <?php endif; ?>
+        </section>
+
+    <?php elseif ($section === 'schedule'): ?>
+        <?php
+            $scheduleDays   = schedule_days();
+            $scheduleTimes  = schedule_lesson_times();
+            $scheduleTypes  = schedule_lesson_types();
+            $scheduleGrid   = schedule_grid($adminScheduleEntries);
+        ?>
+        <section class="panel">
+            <div class="panel__head">
+                <div>
+                    <h2 class="panel__title">Расписание</h2>
+                    <p class="panel__subtitle">
+                        Неделя с <?= e($scheduleDays[1]) ?> по <?= e($scheduleDays[6]) ?>, 9 уроков.
+                        В каждой ячейке — предмет и тип занятия.
+                    </p>
+                </div>
+                <?php if ($adminScheduleGroup !== null && $adminScheduleSubjects !== []): ?>
+                    <form method="post" action="index.php?action=admin_schedule_clear" style="display:inline;"
+                          onsubmit="return confirm('Очистить ВСЁ расписание группы «<?= e($adminScheduleGroup['name']) ?>»?');">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="group_id" value="<?= (int) $adminScheduleGroup['id'] ?>">
+                        <button type="submit" class="pzk-btn pzk-btn--sm">Очистить</button>
+                    </form>
+                <?php endif; ?>
+            </div>
+
+            <?php if ($adminAllGroups === []): ?>
+                <div class="uni-empty">
+                    Сначала создайте хотя бы одну группу — в разделе «Группы».
+                </div>
+            <?php elseif ($adminScheduleGroup === null): ?>
+                <div class="uni-empty">Группа не найдена.</div>
+            <?php elseif ($adminScheduleSubjects === []): ?>
+                <div class="uni-empty">
+                    У группы «<?= e($adminScheduleGroup['name']) ?>» нет предметов.
+                    <a href="?page=admin&amp;section=subjects">Добавьте предметы</a> — после этого здесь можно будет составить расписание.
+                </div>
+            <?php else: ?>
+                <form method="get" action="index.php" class="pzk-inline-form" autocomplete="off"
+                      style="margin-bottom: var(--space-md);">
+                    <input type="hidden" name="page" value="admin">
+                    <input type="hidden" name="section" value="schedule">
+                    <label>Группа:
+                        <select name="schedule_group" class="pzk-field__input" onchange="this.form.submit();">
+                            <?php foreach ($adminAllGroups as $g): ?>
+                                <option value="<?= (int) $g['id'] ?>"
+                                        <?= (int) $g['id'] === $adminScheduleGroupId ? 'selected' : '' ?>>
+                                    <?= e($g['name']) ?> · <?= e($g['year_name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                </form>
+
+                <form method="post" action="index.php?action=admin_schedule_save" autocomplete="off">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="group_id" value="<?= (int) $adminScheduleGroup['id'] ?>">
+
+                    <div class="pzk-table-wrap">
+                        <table class="pzk-table pzk-schedule-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:50px;">№</th>
+                                    <th style="width:130px;">Продолжительность</th>
+                                    <?php foreach ($scheduleDays as $dayNum => $dayLabel): ?>
+                                        <th><?= e($dayLabel) ?></th>
+                                    <?php endforeach; ?>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($scheduleTimes as $lessonNum => $time): ?>
+                                    <tr>
+                                        <td><strong><?= (int) $lessonNum ?></strong></td>
+                                        <td style="font-size:0.85rem; color:var(--color-secondary); white-space:nowrap;"><?= e($time) ?></td>
+                                        <?php foreach ($scheduleDays as $dayNum => $dayLabel): ?>
+                                            <td class="pzk-schedule-cell">
+                                                <?php
+                                                    $cells = $scheduleGrid[$lessonNum][$dayNum] ?? [];
+                                                    $cellCount = count($cells);
+                                                ?>
+                                                <?php for ($pos = 1; $pos <= max($cellCount, 1); $pos++): ?>
+                                                    <?php $cell = $cells[$pos - 1] ?? null; ?>
+                                                    <?php if ($pos > 1): ?><hr class="pzk-schedule-sep"><?php endif; ?>
+                                                    <div class="pzk-schedule-entry">
+                                                        <select class="pzk-field__input pzk-field__input--sm"
+                                                                name="cell[<?= (int) $dayNum ?>][<?= (int) $lessonNum ?>][<?= (int) $pos ?>][subject_id]">
+                                                            <option value="">— не задано —</option>
+                                                            <?php foreach ($adminScheduleSubjects as $subj): ?>
+                                                                <option value="<?= (int) $subj['id'] ?>"
+                                                                        <?= ($cell && (int) $cell['subject_id'] === (int) $subj['id']) ? 'selected' : '' ?>>
+                                                                    <?= e($subj['short_name']) ?>
+                                                                    <?php if ($subj['semester_practice'] !== ''): ?>
+                                                                        · <?= e($subj['semester_practice']) ?>
+                                                                    <?php endif; ?>
+                                                                </option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                        <select class="pzk-field__input pzk-field__input--sm"
+                                                                name="cell[<?= (int) $dayNum ?>][<?= (int) $lessonNum ?>][<?= (int) $pos ?>][lesson_type]">
+                                                            <?php foreach ($scheduleTypes as $typeCode => $typeLabel): ?>
+                                                                <option value="<?= e($typeCode) ?>"
+                                                                        <?= ($cell && $cell['lesson_type'] === $typeCode) ? 'selected' : '' ?>>
+                                                                    <?= e($typeLabel) ?>
+                                                                </option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                    </div>
+                                                <?php endfor; ?>
+                                            </td>
+                                        <?php endforeach; ?>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="pzk-form__actions" style="margin-top: var(--space-md);">
+                        <button type="submit" class="pzk-btn pzk-btn--primary">Сохранить расписание</button>
+                    </div>
+                </form>
             <?php endif; ?>
         </section>
 
@@ -1646,6 +1769,40 @@ $typesMeta = project_types_meta();
     padding-top: 18px;
     border-top: 1px solid #e8dcc0;
     margin-top: 4px;
+}
+
+/* ===== Расписание ===== */
+.pzk-schedule-table {
+    table-layout: fixed;
+    width: 100%;
+}
+.pzk-schedule-table th:nth-child(1),
+.pzk-schedule-table td:nth-child(1) { width: 40px; text-align: center; }
+.pzk-schedule-table th:nth-child(2),
+.pzk-schedule-table td:nth-child(2) { width: 120px; }
+.pzk-schedule-table th:nth-child(n+3),
+.pzk-schedule-table td:nth-child(n+3) { width: 14%; }
+.pzk-schedule-cell {
+    padding: 6px 6px !important;
+    vertical-align: top;
+    background: #fffdf5;
+}
+.pzk-schedule-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 2px 0;
+}
+.pzk-schedule-entry select {
+    width: 100%;
+    padding: 5px 8px !important;
+    font-size: 0.8rem !important;
+    line-height: 1.3;
+}
+.pzk-schedule-sep {
+    border: none;
+    border-top: 1px dashed #e0d5b5;
+    margin: 6px 0;
 }
 
 @media (max-width: 900px) {

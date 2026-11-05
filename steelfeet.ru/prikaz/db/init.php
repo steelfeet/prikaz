@@ -536,6 +536,23 @@ CREATE TABLE IF NOT EXISTS curriculum (
 );
 
 CREATE INDEX IF NOT EXISTS idx_curriculum_subject ON curriculum(subject_id);
+
+CREATE TABLE IF NOT EXISTS schedule_entries (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id    INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    weekday     INTEGER NOT NULL CHECK(weekday BETWEEN 1 AND 6),
+    lesson_num  INTEGER NOT NULL CHECK(lesson_num BETWEEN 1 AND 9),
+    position    INTEGER NOT NULL DEFAULT 1,
+    subject_id  INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    lesson_type TEXT NOT NULL DEFAULT 'group',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (group_id, weekday, lesson_num, position)
+);
+
+CREATE INDEX IF NOT EXISTS idx_schedule_group    ON schedule_entries(group_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_weekday  ON schedule_entries(weekday);
+CREATE INDEX IF NOT EXISTS idx_schedule_lesson   ON schedule_entries(lesson_num);
 SQL);
 
 init_out('✓ Схема применена', $isCli);
@@ -658,7 +675,7 @@ $tables = [
     'roles', 'users', 'user_roles', 'teachers', 'students', 'parents',
     'lessons', 'grades', 'project_phases', 'projects', 'project_students',
     'project_history', 'parent_visits', 'audit_log', 'help_articles',
-    'help_feedback', 'academic_years', 'groups', 'subjects', 'curriculum',
+    'help_feedback', 'academic_years', 'groups', 'subjects', 'curriculum', 'schedule_entries',
 ];
 $counts = [];
 foreach ($tables as $t) {

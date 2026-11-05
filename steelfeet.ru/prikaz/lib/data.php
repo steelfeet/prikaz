@@ -172,6 +172,10 @@ $defaultSubjectYearId = 0;
 $defaultSubjectGroupId = 0;
 $adminCurrentYearSubjectCount = 0;
 $adminCurriculum = [];
+$adminScheduleGroupId = 0;
+$adminScheduleEntries = [];
+$adminScheduleSubjects = [];
+$adminScheduleGroup = null;
 
 if ($viewRole === 'admin') {
     $adminUsers = $pdo->query(
@@ -327,5 +331,66 @@ if ($viewRole === 'admin') {
         }
         unset($subj);
         $adminCurriculum = $subjectsRows;
+    }
+
+    // ===== Расписание =====
+    // Выбор группы: из URL или первая группа текущего года (или любая).
+    $adminScheduleGroupId = isset($_GET['schedule_group']) ? (int) $_GET['schedule_group'] : 0;
+
+    $defaultScheduleGroupId = 0;
+    if ($adminScheduleGroupId > 0) {
+        $stmt = $pdo->prepare(
+            'SELECT g.id FROM groups g WHERE g.id = :g LIMIT 1'
+        );
+        $stmt->execute([':g' => $adminScheduleGroupId]);
+        if ((int) $stmt->fetchColumn() === 0) {
+            $adminScheduleGroupId = 0;
+        }
+    }
+    if ($adminScheduleGroupId === 0) {
+        // Первая группа текущего года, иначе первая вообще.
+        if ($adminCurrentYear !== null) {
+            $stmt = $pdo->prepare(
+                'SELECT g.id FROM groups g WHERE g.academic_year_id = :y ORDER BY g.name LIMIT 1'
+            );
+            $stmt->execute([':y' => (int) $adminCurrentYear['id']]);
+            $defaultScheduleGroupId = (int) $stmt->fetchColumn();
+        }
+        if ($defaultScheduleGroupId === 0 && $adminAllGroups !== []) {
+            $defaultScheduleGroupId = (int) $adminAllGroups[0]['id'];
+        }
+        $adminScheduleGroupId = $defaultScheduleGroupId;
+    }
+
+    if ($adminScheduleGroupId > 0) {
+        // Группа (для заголовка).
+        $stmt = $pdo->prepare(
+            'SELECT g.*, ay.name AS year_name
+             FROM groups g JOIN academic_years ay ON ay.id = g.academic_year_id
+             WHERE g.id = :g'
+        );
+        $stmt->execute([':g' => $adminScheduleGroupId]);
+        $adminScheduleGroup = $stmt->fetch() ?: null;
+
+        // Предметы группы (для селектов).
+        $stmt = $pdo->prepare(
+            'SELECT s.id, s.short_name, s.full_name, s.semester_practice
+             FROM subjects s WHERE s.group_id = :g ORDER BY s.short_name, s.semester_practice'
+        );
+        $stmt->execute([':g' => $adminScheduleGroupId]);
+        $adminScheduleSubjects = $stmt->fetchAll();
+
+        // Записи расписания группы.
+        $stmt = $pdo->prepare(
+            'SELECT se.id, se.weekday, se.lesson_num, se.position,
+                    se.subject_id, se.lesson_type,
+                    s.short_name AS subject_short_name
+             FROM schedule_entries se
+             JOIN subjects s ON s.id = se.subject_id
+             WHERE se.group_id = :g
+             ORDER BY se.lesson_num, se.weekday, se.position'
+        );
+        $stmt->execute([':g' => $adminScheduleGroupId]);
+        $adminScheduleEntries = $stmt->fetchAll();
     }
 }

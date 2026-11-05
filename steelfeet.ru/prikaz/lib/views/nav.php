@@ -29,7 +29,7 @@ if ($viewRole !== 'admin') {
 
 // ===== Админ =====
 $section = $_GET['section'] ?? 'academic_years';
-$academicSections = ['academic_years', 'groups', 'subjects', 'curriculum'];
+$academicSections = ['academic_years', 'groups', 'subjects', 'curriculum', 'schedule'];
 $isAcademicActive = in_array($section, $academicSections, true);
 ?>
 <style>
@@ -127,6 +127,8 @@ $isAcademicActive = in_array($section, $academicSections, true);
                href="?page=admin&section=subjects" role="menuitem">Предметы</a>
             <a class="<?= $section === 'curriculum' ? 'active' : '' ?>"
                href="?page=admin&section=curriculum" role="menuitem">Учебный план</a>
+            <a class="<?= $section === 'schedule' ? 'active' : '' ?>"
+               href="?page=admin&section=schedule" role="menuitem">Расписание</a>
         </div>
     </div>
 
