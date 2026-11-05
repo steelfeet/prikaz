@@ -171,12 +171,13 @@ $adminSubjectsFilterSemester = 0;
 $adminAllGroups = [];
 $adminSemesters = [];
 $adminAllSemesters = [];
+$adminSemestersByYear = [];
 $defaultSubjectGroupId = 0;
 $defaultSubjectSemesterId = 0;
 $adminCurrentYearSubjectCount = 0;
 $adminCurriculum = [];
 
-// Расписание: год + семестр, все группы
+// Расписание
 $adminScheduleYearId = 0;
 $adminScheduleSemesters = [];
 $adminScheduleSemesterId = 0;
@@ -259,6 +260,25 @@ if ($viewRole === 'admin') {
          JOIN academic_years ay ON ay.id = sm.academic_year_id
          ORDER BY ay.start_date DESC, sm.ord, sm.name'
     )->fetchAll();
+
+    // Праздники: все сразу, сгруппируем по semester_id
+    $holidaysBySemester = [];
+    try {
+        $rows = $pdo->query(
+            'SELECT h.* FROM holidays h ORDER BY h.date ASC'
+        )->fetchAll();
+        foreach ($rows as $h) {
+            $holidaysBySemester[(int) $h['semester_id']][] = $h;
+        }
+    } catch (Throwable $e) {}
+
+    // Семестры по годам, с праздниками внутри
+    foreach ($adminAllSemesters as $sm) {
+        $yearId  = (int) $sm['academic_year_id'];
+        $smId    = (int) $sm['id'];
+        $sm['holidays'] = $holidaysBySemester[$smId] ?? [];
+        $adminSemestersByYear[$yearId][] = $sm;
+    }
 
     // ===== Предметы =====
     if (isset($_GET['subject_year'])) {
@@ -363,8 +383,6 @@ if ($viewRole === 'admin') {
     }
 
     // ===== Расписание: год + семестр, все группы =====
-    // Один "поток" расписания на семестр. Группа не выбирается — она
-    // определяется через предмет (у subjects есть group_id).
     $adminScheduleYearId = (int) ($_GET['schedule_year'] ?? 0);
     if ($adminScheduleYearId <= 0) {
         if ($adminCurrentYear !== null) {
@@ -398,8 +416,6 @@ if ($viewRole === 'admin') {
         }
     }
 
-    // Все предметы семестра (все группы) — единый список для селектов.
-    // group_name нужен, чтобы различать «Математика · 46» и «Математика · 36».
     if ($adminScheduleSemesterId > 0) {
         $stmt = $pdo->prepare(
             'SELECT s.id, s.short_name, s.full_name,
@@ -415,7 +431,6 @@ if ($viewRole === 'admin') {
         $adminScheduleSubjects = $stmt->fetchAll();
     }
 
-    // Все записи расписания семестра — плоский список.
     if ($adminScheduleSemesterId > 0) {
         $stmt = $pdo->prepare(
             'SELECT se.id, se.weekday, se.lesson_num, se.position,

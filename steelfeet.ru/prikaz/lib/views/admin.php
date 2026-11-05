@@ -8,6 +8,14 @@ if (!in_array($section, ['academic_years', 'groups', 'subjects', 'curriculum', '
 $flash = flash_get();
 
 $typesMeta = project_types_meta();
+
+// Хелпер: русская дата + день недели для чипа праздника
+$holidayChip = function (string $iso): string {
+    $ts = strtotime($iso);
+    if ($ts === false) return $iso;
+    $dow = ['пн','вт','ср','чт','пт','сб','вс'][(int) date('N', $ts) - 1];
+    return date('d.m.Y', $ts) . ' (' . $dow . ')';
+};
 ?>
 <div class="workspace workspace--prikaz">
     <?php if ($flash !== null): ?>
@@ -102,7 +110,7 @@ $typesMeta = project_types_meta();
                                                 <button type="submit" class="pzk-btn pzk-btn--sm">Сделать текущим</button>
                                             </form>
                                             <form method="post" action="index.php?action=admin_academic_year_delete"
-                                                  onsubmit="return confirm('Удалить учебный год «<?= e($ay['name']) ?>»? Все группы этого года тоже будут удалены.');">
+                                                  onsubmit="return confirm('Удалить учебный год «<?= e($ay['name']) ?>»? Все его семестры и группы будут удалены.');">
                                                 <?= csrf_field() ?>
                                                 <input type="hidden" name="id" value="<?= (int) $ay['id'] ?>">
                                                 <button type="submit" class="pzk-btn pzk-btn--sm">Удалить</button>
@@ -130,8 +138,8 @@ $typesMeta = project_types_meta();
                         <p class="pzk-form__hint">
                             Название в формате «2025/2026». Текущий год — один на всю систему:
                             назначение нового автоматически снимает флаг с предыдущего.
-                            Семестры создаются автоматически («1 семестр», «2 семестр») — их можно
-                            переименовать и дополнить в разделе «Учебный год».
+                            Семестры «1 семестр» и «2 семестр» создаются автоматически — их можно
+                            переименовать или удалить в блоке «Семестры и праздничные дни» ниже.
                         </p>
                     </div>
                     <div class="pzk-form__grid">
@@ -160,6 +168,163 @@ $typesMeta = project_types_meta();
                     </div>
                 </form>
             </details>
+
+            <?php if ($adminAcademicYears !== []): ?>
+                <div style="margin-top: var(--space-xl);">
+                    <h3 style="font-family:'Cormorant Garamond','Inter',serif; font-size:1.4rem; font-weight:600; color:#6b5010; margin: 0 0 var(--space-md); padding-bottom: 8px; border-bottom: 2px solid #e8dcc0;">
+                        Семестры и праздничные дни
+                    </h3>
+
+                    <?php foreach ($adminAcademicYears as $ay): ?>
+                        <?php
+                            $yearId = (int) $ay['id'];
+                            $yearSems = $adminSemestersByYear[$yearId] ?? [];
+                        ?>
+                        <div class="pzk-year-block">
+                            <div class="pzk-year-block__head">
+                                <div>
+                                    <span class="pzk-year-block__title"><?= e($ay['name']) ?></span>
+                                    <?php if ((int) $ay['is_current'] === 1): ?>
+                                        <span class="pzk-status pzk-status--active" style="margin-left:8px;">текущий</span>
+                                    <?php endif; ?>
+                                    <span class="pzk-year-block__meta">
+                                        <?= e($ay['start_date']) ?> — <?= e($ay['end_date']) ?>
+                                    </span>
+                                </div>
+                                <details class="pzk-row-details">
+                                    <summary class="pzk-btn pzk-btn--sm">➕ Добавить семестр</summary>
+                                    <form method="post" action="index.php?action=admin_semester_save"
+                                          class="pzk-edit-form" autocomplete="off">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="academic_year_id" value="<?= $yearId ?>">
+                                        <label class="pzk-field">
+                                            <span class="pzk-field__label">Название</span>
+                                            <input type="text" name="name" required
+                                                   placeholder="Например: 3 семестр, Учебная практика"
+                                                   autocomplete="off"
+                                                   class="pzk-field__input pzk-field__input--sm">
+                                        </label>
+                                        <label class="pzk-field">
+                                            <span class="pzk-field__label">Порядковый номер</span>
+                                            <input type="number" name="ord" min="1" max="9999"
+                                                   value="<?= count($yearSems) + 1 ?>"
+                                                   autocomplete="off"
+                                                   class="pzk-field__input pzk-field__input--sm">
+                                        </label>
+                                        <label class="pzk-checkbox">
+                                            <input type="checkbox" name="is_practice" value="1">
+                                            Практика
+                                        </label>
+                                        <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Создать</button>
+                                    </form>
+                                </details>
+                            </div>
+
+                            <?php if ($yearSems === []): ?>
+                                <div class="pzk-sem-empty">В этом году нет семестров. Добавьте первый.</div>
+                            <?php else: ?>
+                                <?php foreach ($yearSems as $sm): ?>
+                                    <?php $smId = (int) $sm['id']; ?>
+                                    <div class="pzk-sem-card" id="sem-<?= $smId ?>">
+                                        <div class="pzk-sem-card__head">
+                                            <div>
+                                                <span class="pzk-sem-card__title"><?= e($sm['name']) ?></span>
+                                                <?php if ((int) $sm['is_practice'] === 1): ?>
+                                                    <span class="pzk-sem-tag">практика</span>
+                                                <?php endif; ?>
+                                                <span class="pzk-sem-card__meta">
+                                                    праздников: <?= count($sm['holidays']) ?>
+                                                </span>
+                                            </div>
+                                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                                <details class="pzk-row-details">
+                                                    <summary class="pzk-btn pzk-btn--sm">Редактировать</summary>
+                                                    <form method="post" action="index.php?action=admin_semester_save"
+                                                          class="pzk-edit-form" autocomplete="off">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="id" value="<?= $smId ?>">
+                                                        <input type="hidden" name="academic_year_id" value="<?= $yearId ?>">
+                                                        <label class="pzk-field">
+                                                            <span class="pzk-field__label">Название</span>
+                                                            <input type="text" name="name" value="<?= e($sm['name']) ?>"
+                                                                   required autocomplete="off"
+                                                                   class="pzk-field__input pzk-field__input--sm">
+                                                        </label>
+                                                        <label class="pzk-field">
+                                                            <span class="pzk-field__label">Порядковый номер</span>
+                                                            <input type="number" name="ord" min="1" max="9999"
+                                                                   value="<?= (int) $sm['ord'] ?>"
+                                                                   autocomplete="off"
+                                                                   class="pzk-field__input pzk-field__input--sm">
+                                                        </label>
+                                                        <label class="pzk-checkbox">
+                                                            <input type="checkbox" name="is_practice" value="1"
+                                                                   <?= (int) $sm['is_practice'] === 1 ? 'checked' : '' ?>>
+                                                            Практика
+                                                        </label>
+                                                        <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Сохранить</button>
+                                                    </form>
+                                                </details>
+                                                <form method="post" action="index.php?action=admin_semester_delete"
+                                                      onsubmit="return confirm('Удалить семестр «<?= e($sm['name']) ?>»? Все его предметы и расписание тоже будут удалены.');">
+                                                    <?= csrf_field() ?>
+                                                    <input type="hidden" name="id" value="<?= $smId ?>">
+                                                    <button type="submit" class="pzk-btn pzk-btn--sm">Удалить</button>
+                                                </form>
+                                            </div>
+                                        </div>
+
+                                        <div class="pzk-sem-card__body">
+                                            <?php if ($sm['holidays'] === []): ?>
+                                                <p class="pzk-form__hint" style="margin:0 0 10px;">
+                                                    В семестре нет праздничных дней.
+                                                </p>
+                                            <?php else: ?>
+                                                <div class="pzk-holiday-list">
+                                                    <?php foreach ($sm['holidays'] as $h): ?>
+                                                        <span class="pzk-holiday-chip" title="<?= e($h['date']) ?>">
+                                                            <span class="pzk-holiday-chip__date"><?= e($holidayChip((string) $h['date'])) ?></span>
+                                                            <?php if (!empty($h['name'])): ?>
+                                                                <span class="pzk-holiday-chip__name"><?= e($h['name']) ?></span>
+                                                            <?php endif; ?>
+                                                            <form method="post" action="index.php?action=admin_holiday_delete"
+                                                                  onsubmit="return confirm('Удалить праздничный день <?= e($holidayChip((string) $h['date'])) ?>?');"
+                                                                  style="display:inline; margin:0;">
+                                                                <?= csrf_field() ?>
+                                                                <input type="hidden" name="id" value="<?= (int) $h['id'] ?>">
+                                                                <input type="hidden" name="semester_id" value="<?= $smId ?>">
+                                                                <button type="submit" class="pzk-holiday-chip__remove" title="Удалить">×</button>
+                                                            </form>
+                                                        </span>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            <?php endif; ?>
+
+                                            <form method="post" action="index.php?action=admin_holiday_add"
+                                                  class="pzk-holiday-form" autocomplete="off">
+                                                <?= csrf_field() ?>
+                                                <input type="hidden" name="semester_id" value="<?= $smId ?>">
+                                                <label class="pzk-field" style="flex: 0 0 180px;">
+                                                    <span class="pzk-field__label">Дата</span>
+                                                    <input class="pzk-field__input" type="date" name="date" required>
+                                                </label>
+                                                <label class="pzk-field" style="flex: 1 1 220px;">
+                                                    <span class="pzk-field__label">Название (опционально)</span>
+                                                    <input class="pzk-field__input" type="text" name="name"
+                                                           placeholder="Например: День народного единства" autocomplete="off">
+                                                </label>
+                                                <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary" style="align-self: flex-end;">
+                                                    Добавить
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </section>
 
     <?php elseif ($section === 'groups'): ?>
@@ -316,7 +481,6 @@ $typesMeta = project_types_meta();
                             <p class="pzk-form__hint">
                                 Группа принадлежит одному учебному году. В разных годах могут
                                 быть группы с одинаковыми названиями — это разные сущности.
-                                Название группы в году должно быть уникальным.
                             </p>
                         </div>
                         <div class="pzk-form__grid">
@@ -455,11 +619,7 @@ $typesMeta = project_types_meta();
                                         <td><?= e($s['full_name']) ?></td>
                                         <td><?= (int) $s['hours'] ?></td>
                                         <td style="font-size:0.82rem; color:var(--color-tertiary);">
-                                            <?php if ($s['semester_name'] !== ''): ?>
-                                                <?= e($s['semester_name']) ?>
-                                            <?php else: ?>
-                                                —
-                                            <?php endif; ?>
+                                            <?= $s['semester_name'] !== '' ? e($s['semester_name']) : '—' ?>
                                         </td>
                                         <td class="pzk-table__actions">
                                             <details class="pzk-row-details">
@@ -789,7 +949,6 @@ $typesMeta = project_types_meta();
             $scheduleTimes = schedule_lesson_times();
             $scheduleTypes = schedule_lesson_types();
 
-            // Группируем записи расписания для рендера: [lesson_num][weekday] => []
             $scheduleGrid = [];
             foreach ($adminScheduleEntries as $row) {
                 $scheduleGrid[(int) $row['lesson_num']][(int) $row['weekday']][] = $row;
@@ -806,6 +965,7 @@ $typesMeta = project_types_meta();
                         Неделя с <?= e($scheduleDays[1]) ?> по <?= e($scheduleDays[6]) ?>, 9 уроков.
                         В ячейке — предмет (с указанием группы) и тип занятия.
                         Расписание одно на семестр, для всех групп.
+                        Праздничные дни настраиваются в разделе «Учебный год».
                     </p>
                 </div>
                 <?php if ($adminScheduleSemesterId > 0 && $adminScheduleEntries !== []): ?>
@@ -1529,6 +1689,20 @@ $typesMeta = project_types_meta();
 .pzk-status--active   { background: rgba(22, 163, 74, 0.12); color: #15803d; }
 .pzk-status--inactive { background: rgba(220, 38, 38, 0.12); color: #b91c1c; }
 
+.pzk-sem-tag {
+    display: inline-block;
+    padding: 1px 8px;
+    margin-left: 6px;
+    border-radius: 10px;
+    font-size: 0.68rem;
+    background: rgba(139, 105, 20, 0.12);
+    color: #6b5010;
+    border: 1px solid rgba(139, 105, 20, 0.25);
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
 .pzk-hint-inline {
     font-size: 0.78rem;
     color: var(--color-tertiary);
@@ -1813,6 +1987,140 @@ $typesMeta = project_types_meta();
     margin-top: 4px;
 }
 
+/* ===== Семестры и праздники (в разделе «Учебный год») ===== */
+.pzk-year-block {
+    background: #fbf7ec;
+    border: 1px solid #e8dcc0;
+    border-left: 4px solid #8b6914;
+    padding: 18px 22px;
+    margin-bottom: var(--space-md);
+    border-radius: 2px;
+}
+.pzk-year-block__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-bottom: 12px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid #e8dcc0;
+}
+.pzk-year-block__title {
+    font-family: 'Cormorant Garamond', 'Inter', serif;
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #6b5010;
+}
+.pzk-year-block__meta {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--color-tertiary);
+    margin-top: 2px;
+}
+
+.pzk-sem-card {
+    background: #fff;
+    border: 1px solid rgba(26, 26, 26, 0.1);
+    border-radius: 2px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+}
+.pzk-sem-card:last-child {
+    margin-bottom: 0;
+}
+.pzk-sem-card__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed #e8dcc0;
+}
+.pzk-sem-card__title {
+    font-family: 'Cormorant Garamond', 'Inter', serif;
+    font-size: 2.1rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    line-height: 1.15;
+}
+.pzk-sem-card__meta {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--color-tertiary);
+    margin-top: 2px;
+}
+.pzk-sem-empty {
+    font-size: 0.85rem;
+    color: var(--color-tertiary);
+    font-style: italic;
+    padding: 8px 4px;
+}
+
+.pzk-holiday-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.pzk-holiday-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px 5px 10px;
+    background: #fef3c7;
+    border: 1px solid #d97706;
+    border-left: 3px solid #d97706;
+    border-radius: 3px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.82rem;
+    color: #78350f;
+    white-space: nowrap;
+}
+.pzk-holiday-chip__date {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.pzk-holiday-chip__name {
+    color: #92400e;
+    padding-left: 6px;
+    border-left: 1px solid rgba(217, 119, 6, 0.3);
+}
+.pzk-holiday-chip__remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    margin-left: 2px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    color: #b45309;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.pzk-holiday-chip__remove:hover {
+    background: rgba(220, 38, 38, 0.1);
+    color: #b91c1c;
+    border-color: rgba(220, 38, 38, 0.3);
+}
+.pzk-holiday-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+    padding: 12px 14px;
+    background: #fbf7ec;
+    border: 1px solid #e8dcc0;
+    border-radius: 2px;
+}
+
 /* ===== Расписание ===== */
 .pzk-schedule-table {
     table-layout: fixed;
@@ -1857,6 +2165,12 @@ $typesMeta = project_types_meta();
     .pzk-details__summary { padding: 14px 16px; font-size: 1.05rem; }
     .pzk-form__actions { justify-content: stretch; }
     .pzk-form__actions .pzk-btn { width: 100%; justify-content: center; }
+
+    .pzk-year-block { padding: 14px 14px; }
+    .pzk-sem-card { padding: 12px 12px; }
+    .pzk-sem-card__title { font-size: 1.6rem; }
+    .pzk-holiday-form { flex-direction: column; align-items: stretch; }
+    .pzk-holiday-form .pzk-field { flex: 1 1 auto !important; }
 }
 </style>
 

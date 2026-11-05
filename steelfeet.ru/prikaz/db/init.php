@@ -134,7 +134,6 @@ function init_fail(string $message, bool $isCli, int $code = 1, ?callable $extra
         if ($extra !== null) $extra();
         exit($code);
     }
-    // Заголовки могли уже уйти — не пытаемся ставить код, если так.
     if (!headers_sent()) {
         http_response_code(500);
     }
@@ -332,8 +331,8 @@ if (!$isCli) {
 }
 
 // =============================================================================
-// Схема. Таблицы subjects, curriculum, schedule_entries
-// создаются отдельным блоком ниже — там же обрабатывается старая схема.
+// Схема. Таблица subjects сюда НЕ входит — её создаём отдельно ниже,
+// потому что может существовать старая версия, которую нужно мигрировать.
 // =============================================================================
 $pdo->exec(<<<'SQL'
 CREATE TABLE IF NOT EXISTS roles (
@@ -525,6 +524,17 @@ CREATE TABLE IF NOT EXISTS semesters (
 );
 
 CREATE INDEX IF NOT EXISTS idx_semesters_year ON semesters(academic_year_id);
+
+CREATE TABLE IF NOT EXISTS holidays (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    semester_id INTEGER NOT NULL REFERENCES semesters(id) ON DELETE CASCADE,
+    date        TEXT NOT NULL,
+    name        TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_holidays_semester_date ON holidays(semester_id, date);
+CREATE INDEX IF NOT EXISTS idx_holidays_semester ON holidays(semester_id);
 SQL);
 
 init_out('✓ Схема применена', $isCli);
@@ -534,7 +544,6 @@ init_out('✓ Схема применена', $isCli);
 //
 // Старую схему subjects (с academic_year_id + semester_practice) сносим
 // целиком, вместе с curriculum и schedule_entries, которые на неё ссылаются.
-// Данные предметов, плана и расписания в этом случае теряются — это ожидаемо.
 // =============================================================================
 $subjectCols = [];
 foreach ($pdo->query('PRAGMA table_info(subjects)')->fetchAll() as $col) {
@@ -588,7 +597,6 @@ CREATE INDEX IF NOT EXISTS idx_schedule_lesson   ON schedule_entries(lesson_num)
 SQL;
 
 if ($needRecreate) {
-    // Считаем, что теряем — чтобы показать в логе.
     $dropped = ['subjects' => 0, 'curriculum' => 0, 'schedule_entries' => 0];
     foreach (array_keys($dropped) as $tbl) {
         try {
@@ -598,9 +606,6 @@ if ($needRecreate) {
         }
     }
 
-    // PRAGMA foreign_keys вне транзакции — иначе игнорируется.
-    // Транзакцию не открываем: DDL в SQLite атомарен для каждой таблицы,
-    // а с активной транзакцией DROP TABLE subjects давал table is locked.
     $pdo->exec('PRAGMA foreign_keys = OFF');
     try {
         $pdo->exec('DROP TABLE IF EXISTS schedule_entries');
@@ -703,7 +708,6 @@ if ($groupsCount === 0) {
     init_out('→ Группы: ' . $groupsCount . ' (сид пропущен)', $isCli);
 }
 
-// Семестры: базовый набор «1 семестр» / «2 семестр» для каждого учебного года.
 $semCount = (int) $pdo->query('SELECT COUNT(*) FROM semesters')->fetchColumn();
 if ($semCount === 0) {
     $seedSemesters = [
@@ -750,18 +754,6 @@ if ((int) $stmt->fetchColumn() === 0) {
     init_out('→ Администратор <code>' . htmlspecialchars($adminLogin, ENT_QUOTES, 'UTF-8') . '</code> уже существует', $isCli);
 }
 
-
-// =============================================================================
-// Help: почистить статьи CRM/LMS-эпохи (docs-*, workflow-*, reports, journal,
-// lms-*) и заново засеять PAMS-версией. Статьи с slug вида prikaz-* не трогаем.
-// =============================================================================
-$deleted = $pdo->exec("DELETE FROM help_articles WHERE slug NOT LIKE 'prikaz-%'");
-if ($deleted > 0) {
-    init_out("✓ Удалены устаревшие статьи справки: {$deleted}", $isCli);
-}
-
-
-
 $help = [
     ['prikaz-journal', 'Как работает журнал',
      "Журнал показывает оценки и посещаемость по всем занятиям.\n\nПреподаватель: клик по ячейке — поставить или изменить оценку, оставить заметку.\nСтудент: только свои оценки и заметки.\nРодитель: только оценки своего ребёнка.",
@@ -772,8 +764,8 @@ $help = [
     ['prikaz-aliases', 'Псевдонимы и персональные данные',
      "В репозиториях (Gogs, GitHub) используются только псевдонимы вида s-<группа>-<номер>.\n\nРасшифровка «псевдоним → ФИО» хранится только в Приказе. Это требование 152-ФЗ.\n\nРаздел «Студенты» в админке показывает соответствие.",
      'admin'],
-    ['prikaz-groups', 'Группы, семестры, учебный год',
-     "Учебный год — верхний уровень. Внутри года — семестры (1, 2, учебная практика) и группы.\n\nСеместры задаются в форме учебного года, по одному в строке.\nПредмет привязан к семестру и группе.\n\nПри удалении учебного года все его группы и семестры удаляются.",
+    ['prikaz-groups', 'Группы и учебный год',
+     "Группы принадлежат учебному году. Каждый год — свой набор групп.\n\nГруппа «46» в 2024/2025 и «46» в 2025/2026 — разные сущности. У каждой своя история и свой состав.\n\nПри удалении учебного года все его группы удаляются. Студенты и оценки остаются, но привязка к группе теряется.",
      'admin'],
     ['prikaz-admin', 'Админ: как управлять пользователями',
      "Только администратор может создавать пользователей.\n\n1. Раздел «Пользователи».\n2. «Создать» — логин, ФИО, роль, временный пароль.\n3. Передать пароль пользователю.\n4. Смена пароля — кнопка «Сбросить».",
@@ -785,9 +777,6 @@ foreach ($help as [$slug, $title, $body, $role]) {
 }
 init_out('✓ Help-статьи: ' . count($help), $isCli);
 
-
-
-
 // =============================================================================
 // Сводка
 // =============================================================================
@@ -796,7 +785,7 @@ $tables = [
     'lessons', 'grades', 'project_phases', 'projects', 'project_students',
     'project_history', 'parent_visits', 'audit_log', 'help_articles',
     'help_feedback', 'academic_years', 'groups', 'semesters', 'subjects',
-    'curriculum', 'schedule_entries',
+    'curriculum', 'schedule_entries', 'holidays',
 ];
 $counts = [];
 foreach ($tables as $t) {

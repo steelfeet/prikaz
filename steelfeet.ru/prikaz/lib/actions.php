@@ -685,7 +685,6 @@ if ($action === 'admin_schedule_save') {
         redirect('index.php?page=admin&section=schedule');
     }
 
-    // Все предметы семестра: id => [group_id, short_name, group_name]
     $stmt = $pdo->prepare(
         'SELECT s.id, s.short_name, s.group_id, g.name AS group_name
          FROM subjects s JOIN groups g ON g.id = s.group_id
@@ -711,10 +710,10 @@ if ($action === 'admin_schedule_save') {
     $validTypes = schedule_lesson_types();
     $maxPerCell = schedule_max_per_cell();
 
-    $toInsert   = [];
-    $duplicates = 0;
-    $invalid    = 0;
-    $slotPosition = [];   // "group:weekday:lesson" => номер следующей позиции
+    $toInsert     = [];
+    $duplicates   = 0;
+    $invalid      = 0;
+    $slotPosition = [];
 
     for ($weekday = 1; $weekday <= 6; $weekday++) {
         if (!isset($rawCells[$weekday]) || !is_array($rawCells[$weekday])) continue;
@@ -753,8 +752,6 @@ if ($action === 'admin_schedule_save') {
     try {
         $pdo->beginTransaction();
 
-        // Удаляем всё расписание этого семестра (по всем группам сразу).
-        // Записи других семестров не затрагиваются — у них другие subject_id.
         $pdo->prepare(
             'DELETE FROM schedule_entries
              WHERE subject_id IN (SELECT id FROM subjects WHERE semester_id = :sm)'
@@ -821,6 +818,92 @@ if ($action === 'admin_schedule_clear') {
         flash_set('success', 'Расписание семестра «' . $name . '» очищено.');
     } catch (Throwable $e) {
         flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect($backUrl);
+}
+
+// ===== ПРАЗДНИЧНЫЙ ДЕНЬ: добавление (в разделе «Учебный год») =====
+if ($action === 'admin_holiday_add') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $semesterId = (int) ($_POST['semester_id'] ?? 0);
+    $date       = trim((string) ($_POST['date'] ?? ''));
+    $name       = trim((string) ($_POST['name'] ?? ''));
+
+    $backUrl = 'index.php?page=admin&section=academic_years'
+        . ($semesterId > 0 ? '#sem-' . $semesterId : '');
+
+    if ($semesterId <= 0) {
+        flash_set('danger', 'Семестр не выбран.');
+        redirect('index.php?page=admin&section=academic_years');
+    }
+    if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        flash_set('danger', 'Укажите дату в формате ГГГГ-ММ-ДД.');
+        redirect($backUrl);
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT sm.id, sm.name AS semester_name,
+                ay.start_date, ay.end_date, ay.name AS year_name
+         FROM semesters sm
+         JOIN academic_years ay ON ay.id = sm.academic_year_id
+         WHERE sm.id = :id'
+    );
+    $stmt->execute([':id' => $semesterId]);
+    $semester = $stmt->fetch();
+    if (!$semester) {
+        flash_set('danger', 'Семестр не найден.');
+        redirect('index.php?page=admin&section=academic_years');
+    }
+    if ($date < $semester['start_date'] || $date > $semester['end_date']) {
+        flash_set('danger', 'Дата ' . $date . ' вне учебного года «' . $semester['year_name']
+            . '» (' . $semester['start_date'] . ' — ' . $semester['end_date'] . ').');
+        redirect($backUrl);
+    }
+
+    try {
+        $stmt = $pdo->prepare(
+            'INSERT OR IGNORE INTO holidays (semester_id, date, name)
+             VALUES (:sm, :d, :n)'
+        );
+        $stmt->execute([
+            ':sm' => $semesterId,
+            ':d'  => $date,
+            ':n'  => $name !== '' ? $name : null,
+        ]);
+        if ($stmt->rowCount() === 0) {
+            flash_set('danger', 'Дата ' . $date . ' уже отмечена как праздничная в этом семестре.');
+        } else {
+            $newId = (int) $pdo->lastInsertId();
+            audit_log((int) $currentUser['id'], 'holiday_add', 'holiday', $newId,
+                'semester=' . $semesterId . ' date=' . $date);
+            flash_set('success', 'Праздничный день ' . $date . ' добавлен в семестр «'
+                . $semester['semester_name'] . '».');
+        }
+    } catch (Throwable $e) {
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect($backUrl);
+}
+
+// ===== ПРАЗДНИЧНЫЙ ДЕНЬ: удаление =====
+if ($action === 'admin_holiday_delete') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $id         = (int) ($_POST['id'] ?? 0);
+    $semesterId = (int) ($_POST['semester_id'] ?? 0);
+
+    $backUrl = 'index.php?page=admin&section=academic_years'
+        . ($semesterId > 0 ? '#sem-' . $semesterId : '');
+
+    if ($id > 0) {
+        try {
+            $pdo->prepare('DELETE FROM holidays WHERE id = :id')->execute([':id' => $id]);
+            audit_log((int) $currentUser['id'], 'holiday_delete', 'holiday', $id);
+            flash_set('success', 'Праздничный день удалён.');
+        } catch (Throwable $e) {
+            flash_set('danger', 'Ошибка: ' . $e->getMessage());
+        }
     }
     redirect($backUrl);
 }
