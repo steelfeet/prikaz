@@ -509,21 +509,33 @@ CREATE TABLE IF NOT EXISTS groups (
 
 CREATE INDEX IF NOT EXISTS idx_groups_year ON groups(academic_year_id);
 
-CREATE TABLE IF NOT EXISTS subjects (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    academic_year_id  INTEGER NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
-    group_id          INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-    short_name        TEXT NOT NULL,
-    full_name         TEXT NOT NULL,
-    hours             INTEGER NOT NULL DEFAULT 0,
-    semester_practice TEXT NOT NULL DEFAULT '',
-    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE (academic_year_id, group_id, short_name, semester_practice)
+CREATE TABLE IF NOT EXISTS semesters (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    academic_year_id INTEGER NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
+    name             TEXT NOT NULL,
+    is_practice      INTEGER NOT NULL DEFAULT 0,
+    ord              INTEGER NOT NULL DEFAULT 1,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (academic_year_id, name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_subjects_year  ON subjects(academic_year_id);
-CREATE INDEX IF NOT EXISTS idx_subjects_group ON subjects(group_id);
+CREATE INDEX IF NOT EXISTS idx_semesters_year ON semesters(academic_year_id);
+
+CREATE TABLE IF NOT EXISTS subjects (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    semester_id INTEGER NOT NULL REFERENCES semesters(id) ON DELETE CASCADE,
+    group_id   INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    short_name TEXT NOT NULL,
+    full_name  TEXT NOT NULL,
+    hours      INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (semester_id, group_id, short_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_subjects_semester ON subjects(semester_id);
+CREATE INDEX IF NOT EXISTS idx_subjects_group    ON subjects(group_id);
 
 CREATE TABLE IF NOT EXISTS curriculum (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -556,6 +568,122 @@ CREATE INDEX IF NOT EXISTS idx_schedule_lesson   ON schedule_entries(lesson_num)
 SQL);
 
 init_out('✓ Схема применена', $isCli);
+
+// =============================================================================
+// Миграция: Предмет был привязан к году + текстовому полю «Семестр / Практика».
+// Теперь сущность «Семестр» отдельная, а Предмет ссылается на неё.
+//
+// Признак старой схемы — колонка subjects.semester_practice.
+// Для новой БД она не создаётся, поэтому миграция пропускается.
+// =============================================================================
+$subjectCols = [];
+foreach ($pdo->query('PRAGMA table_info(subjects)')->fetchAll() as $col) {
+    $subjectCols[$col['name']] = true;
+}
+
+if (isset($subjectCols['semester_practice'])) {
+    $lower = static function (string $s): string {
+        return function_exists('mb_strtolower') ? mb_strtolower($s, 'UTF-8') : strtolower($s);
+    };
+
+    // 1. Создаём семестры из уникальных пар (год, «Семестр / Практика»).
+    $pairs = $pdo->query(
+        'SELECT DISTINCT academic_year_id, semester_practice FROM subjects
+         ORDER BY academic_year_id, semester_practice'
+    )->fetchAll();
+
+    $insSem    = $pdo->prepare(
+        'INSERT OR IGNORE INTO semesters (academic_year_id, name, is_practice, ord)
+         VALUES (:y, :n, :p, :o)'
+    );
+    $getSem    = $pdo->prepare('SELECT id FROM semesters WHERE academic_year_id = :y AND name = :n');
+    $semesterOf = [];
+    foreach ($pairs as $p) {
+        $yearId = (int) $p['academic_year_id'];
+        $text   = trim((string) $p['semester_practice']);
+        $name   = $text !== '' ? $text : 'Без семестра';
+        $isPractice = strpos($lower($name), 'рактик') !== false ? 1 : 0;
+        $insSem->execute([
+            ':y' => $yearId,
+            ':n' => $name,
+            ':p' => $isPractice,
+            ':o' => $isPractice ? 50 : 1,
+        ]);
+        $getSem->execute([':y' => $yearId, ':n' => $name]);
+        $semesterOf[$yearId . '|' . $text] = (int) $getSem->fetchColumn();
+    }
+
+    // 2. Пересоздаём subjects: id сохраняем, поэтому ссылки curriculum
+    //    и schedule_entries остаются валидными.
+    //    PRAGMA foreign_keys вне транзакции — иначе он игнорируется.
+    $pdo->exec('PRAGMA foreign_keys = OFF');
+    try {
+        $pdo->beginTransaction();
+
+        $pdo->exec(<<<'SQL'
+CREATE TABLE subjects_new (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    semester_id INTEGER NOT NULL REFERENCES semesters(id) ON DELETE CASCADE,
+    group_id    INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    short_name  TEXT NOT NULL,
+    full_name   TEXT NOT NULL,
+    hours       INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (semester_id, group_id, short_name)
+)
+SQL);
+
+        $rows = $pdo->query(
+            'SELECT id, academic_year_id, group_id, short_name, full_name, hours, semester_practice
+             FROM subjects ORDER BY id'
+        )->fetchAll();
+
+        $insNew = $pdo->prepare(
+            'INSERT OR IGNORE INTO subjects_new
+                (id, semester_id, group_id, short_name, full_name, hours, created_at, updated_at)
+             VALUES (:id, :sm, :g, :sn, :fn, :h, :c, :u)'
+        );
+        $moved = $dropped = 0;
+        foreach ($rows as $r) {
+            $key = (int) $r['academic_year_id'] . '|' . trim((string) $r['semester_practice']);
+            $semesterId = $semesterOf[$key] ?? 0;
+            if ($semesterId <= 0) { $dropped++; continue; }
+            $insNew->execute([
+                ':id' => (int) $r['id'],
+                ':sm' => $semesterId,
+                ':g'  => (int) $r['group_id'],
+                ':sn' => (string) $r['short_name'],
+                ':fn' => (string) $r['full_name'],
+                ':h'  => (int) $r['hours'],
+                ':c'  => (string) ($r['created_at'] ?? date('Y-m-d H:i:s')),
+                ':u'  => (string) ($r['updated_at'] ?? date('Y-m-d H:i:s')),
+            ]);
+            $moved++;
+        }
+
+        $pdo->exec('DROP TABLE subjects');
+        $pdo->exec('ALTER TABLE subjects_new RENAME TO subjects');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_subjects_semester ON subjects(semester_id)');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_subjects_group    ON subjects(group_id)');
+
+        $pdo->commit();
+        init_out("✓ Миграция: предметов перенесено {$moved}"
+            . ($dropped ? ", без семестра удалено {$dropped}" : ''), $isCli);
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        $pdo->exec('PRAGMA foreign_keys = ON');
+        init_fail('Не удалось перевести предметы на семестры: ' . $e->getMessage(), $isCli);
+    }
+    $pdo->exec('PRAGMA foreign_keys = ON');
+
+    $violations = $pdo->query('PRAGMA foreign_key_check')->fetchAll();
+    if ($violations !== []) {
+        init_fail('После миграции нарушены внешние ключи: ' . json_encode($violations, JSON_UNESCAPED_UNICODE), $isCli);
+    }
+} else {
+    init_out('→ Миграция семестров не требуется', $isCli);
+}
 
 // =============================================================================
 // Seed
@@ -626,6 +754,34 @@ if ($groupsCount === 0) {
     init_out('→ Группы: ' . $groupsCount . ' (сид пропущен)', $isCli);
 }
 
+// Семестры: базовый набор «1 семестр» / «2 семестр» для каждого учебного года.
+$semCount = (int) $pdo->query('SELECT COUNT(*) FROM semesters')->fetchColumn();
+if ($semCount === 0) {
+    $seedSemesters = [
+        ['1 семестр', 0, 1],
+        ['2 семестр', 0, 2],
+    ];
+    $stmt = $pdo->prepare(
+        'INSERT OR IGNORE INTO semesters (academic_year_id, name, is_practice, ord)
+         VALUES (:y, :n, :p, :o)'
+    );
+    $added = 0;
+    foreach ($pdo->query('SELECT id FROM academic_years')->fetchAll() as $y) {
+        foreach ($seedSemesters as [$name, $isPractice, $ord]) {
+            $stmt->execute([
+                ':y' => (int) $y['id'],
+                ':n' => $name,
+                ':p' => $isPractice,
+                ':o' => $ord,
+            ]);
+            $added += $stmt->rowCount();
+        }
+    }
+    init_out('✓ Семестры (сид): ' . $added, $isCli);
+} else {
+    init_out('→ Семестры: ' . $semCount . ' (сид пропущен)', $isCli);
+}
+
 $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE login = :l');
 $stmt->execute([':l' => $adminLogin]);
 $adminCreated = false;
@@ -675,7 +831,7 @@ $tables = [
     'roles', 'users', 'user_roles', 'teachers', 'students', 'parents',
     'lessons', 'grades', 'project_phases', 'projects', 'project_students',
     'project_history', 'parent_visits', 'audit_log', 'help_articles',
-    'help_feedback', 'academic_years', 'groups', 'subjects', 'curriculum', 'schedule_entries',
+    'help_feedback', 'academic_years', 'groups', 'semesters', 'subjects', 'curriculum', 'schedule_entries',
 ];
 $counts = [];
 foreach ($tables as $t) {

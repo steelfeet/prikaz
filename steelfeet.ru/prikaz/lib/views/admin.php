@@ -160,6 +160,171 @@ $typesMeta = project_types_meta();
             </details>
         </section>
 
+        <?php
+            // Семестры сгруппированы по годам в том же порядке, что и таблица годов.
+            $semestersByYear = [];
+            foreach ($adminAllSemesters as $sm) {
+                $semestersByYear[(int) $sm['academic_year_id']][] = $sm;
+            }
+        ?>
+        <section class="panel" style="margin-top: var(--space-xl);">
+            <div class="panel__head">
+                <div>
+                    <h2 class="panel__title">Семестры</h2>
+                    <p class="panel__subtitle">
+                        Семестры относятся к учебному году, а предметы — к семестрам.
+                        Отметьте «учебная практика», если это практика, а не учебный семестр.
+                        Новому учебному году автоматически создаются «1 семестр» и «2 семестр».
+                    </p>
+                </div>
+                <a href="#add-semester" class="pzk-btn pzk-btn--primary" data-open-details>
+                    ➕ Добавить
+                </a>
+            </div>
+
+            <?php if ($adminAcademicYears === []): ?>
+                <div class="uni-empty">Сначала создайте учебный год.</div>
+            <?php elseif ($adminAllSemesters === []): ?>
+                <div class="uni-empty">Семестров пока нет. Добавьте первый.</div>
+            <?php else: ?>
+                <?php foreach ($adminAcademicYears as $ay): ?>
+                    <?php $yearSemesters = $semestersByYear[(int) $ay['id']] ?? []; ?>
+                    <div style="margin-bottom: var(--space-lg);">
+                        <h3 style="font-family:'Cormorant Garamond','Inter',serif; font-size:1.05rem; font-weight:600; margin:0 0 var(--space-sm);">
+                            <?= e($ay['name']) ?>
+                            <?php if ((int) $ay['is_current'] === 1): ?>
+                                <span class="pzk-status pzk-status--active" style="margin-left:6px;">текущий</span>
+                            <?php endif; ?>
+                        </h3>
+                        <?php if ($yearSemesters === []): ?>
+                            <div class="uni-empty">В этом году семестров пока нет.</div>
+                        <?php else: ?>
+                            <div class="pzk-table-wrap">
+                                <table class="pzk-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:60px;">ID</th>
+                                            <th style="width:80px;">№</th>
+                                            <th>Название</th>
+                                            <th style="width:150px;">Практика</th>
+                                            <th style="width:280px;">Действия</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($yearSemesters as $sm): ?>
+                                            <tr>
+                                                <td><?= (int) $sm['id'] ?></td>
+                                                <td><?= (int) $sm['ord'] ?></td>
+                                                <td><strong><?= e($sm['name']) ?></strong></td>
+                                                <td>
+                                                    <?php if ((int) $sm['is_practice'] === 1): ?>
+                                                        <span class="pzk-status pzk-status--active">учебная практика</span>
+                                                    <?php else: ?>
+                                                        <span style="color:var(--color-tertiary);">—</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td class="pzk-table__actions">
+                                                    <details class="pzk-row-details">
+                                                        <summary class="pzk-btn pzk-btn--sm">Редактировать</summary>
+                                                        <form method="post" action="index.php?action=admin_semester_save"
+                                                              class="pzk-edit-form" autocomplete="off">
+                                                            <?= csrf_field() ?>
+                                                            <input type="hidden" name="id" value="<?= (int) $sm['id'] ?>">
+                                                            <label class="pzk-field">
+                                                                <span class="pzk-field__label">Учебный год</span>
+                                                                <select name="academic_year_id" required
+                                                                        class="pzk-field__input pzk-field__input--sm">
+                                                                    <?php foreach ($adminAcademicYears as $yOpt): ?>
+                                                                        <option value="<?= (int) $yOpt['id'] ?>"
+                                                                                <?= (int) $yOpt['id'] === (int) $sm['academic_year_id'] ? 'selected' : '' ?>>
+                                                                            <?= e($yOpt['name']) ?>
+                                                                        </option>
+                                                                    <?php endforeach; ?>
+                                                                </select>
+                                                            </label>
+                                                            <label class="pzk-field">
+                                                                <span class="pzk-field__label">Название</span>
+                                                                <input type="text" name="name" value="<?= e($sm['name']) ?>"
+                                                                       required autocomplete="off"
+                                                                       class="pzk-field__input pzk-field__input--sm">
+                                                            </label>
+                                                            <label class="pzk-field">
+                                                                <span class="pzk-field__label">Порядок</span>
+                                                                <input type="number" name="ord" value="<?= (int) $sm['ord'] ?>"
+                                                                       required min="1" step="1" autocomplete="off"
+                                                                       class="pzk-field__input pzk-field__input--sm">
+                                                            </label>
+                                                            <label class="pzk-checkbox">
+                                                                <input type="checkbox" name="is_practice" value="1"
+                                                                       <?= (int) $sm['is_practice'] === 1 ? 'checked' : '' ?>>
+                                                                Учебная практика
+                                                            </label>
+                                                            <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Сохранить</button>
+                                                        </form>
+                                                    </details>
+                                                    <form method="post" action="index.php?action=admin_semester_delete"
+                                                          onsubmit="return confirm('Удалить семестр «<?= e($sm['name']) ?>»? Предметы этого семестра тоже будут удалены.');">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="id" value="<?= (int) $sm['id'] ?>">
+                                                        <button type="submit" class="pzk-btn pzk-btn--sm">Удалить</button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+
+            <details class="pzk-details" id="add-semester" style="margin-top: var(--space-lg);">
+                <summary class="pzk-details__summary">➕ Добавить семестр</summary>
+                <form method="post" action="index.php?action=admin_semester_save"
+                      class="pzk-form" autocomplete="off">
+                    <?= csrf_field() ?>
+                    <div>
+                        <h3 class="pzk-form__title">Новый семестр</h3>
+                        <p class="pzk-form__hint">
+                            Например: «1 семестр», «2 семестр» или «производственная практика».
+                            В одном учебном году названия не должны повторяться.
+                        </p>
+                    </div>
+                    <div class="pzk-form__grid">
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Учебный год</span>
+                            <select class="pzk-field__input" name="academic_year_id" required>
+                                <?php foreach ($adminAcademicYears as $ay): ?>
+                                    <option value="<?= (int) $ay['id'] ?>"
+                                            <?= $adminCurrentYear !== null && (int) $ay['id'] === (int) $adminCurrentYear['id'] ? 'selected' : '' ?>>
+                                        <?= e($ay['name']) ?><?= (int) $ay['is_current'] === 1 ? ' (текущий)' : '' ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Название</span>
+                            <input class="pzk-field__input" type="text" name="name" required
+                                   placeholder="1 семестр" autocomplete="off">
+                        </label>
+                        <label class="pzk-field">
+                            <span class="pzk-field__label">Порядок</span>
+                            <input class="pzk-field__input" type="number" name="ord" required min="1" step="1"
+                                   value="1" autocomplete="off">
+                        </label>
+                    </div>
+                    <label class="pzk-checkbox">
+                        <input type="checkbox" name="is_practice" value="1">
+                        Учебная практика
+                    </label>
+                    <div class="pzk-form__actions">
+                        <button type="submit" class="pzk-btn pzk-btn--primary">Создать семестр</button>
+                    </div>
+                </form>
+            </details>
+        </section>
+
     <?php elseif ($section === 'groups'): ?>
         <section class="panel">
             <div class="panel__head">
@@ -359,8 +524,8 @@ $typesMeta = project_types_meta();
                 <div>
                     <h2 class="panel__title">Предметы</h2>
                     <p class="panel__subtitle">
-                        Каждый учебный год — свой набор предметов. Предмет привязан к группе,
-                        у каждого семестра или практики — свой предмет.
+                        Предмет привязан к группе и к семестру, а семестр — к учебному году.
+                        Учебный год в форме предмета не выбирается: он берётся из семестра.
                         <?php if ($adminCurrentYear !== null): ?>
                             В текущем году <strong><?= e($adminCurrentYear['name']) ?></strong>
                             предметов: <strong><?= $adminCurrentYearSubjectCount ?></strong>.
@@ -411,6 +576,17 @@ $typesMeta = project_types_meta();
                                 <?php endforeach; ?>
                         </select>
                     </label>
+                    <label>Семестр:
+                        <select name="subject_semester" class="pzk-field__input" onchange="this.form.submit();">
+                            <option value="0" <?= $adminSubjectsFilterSemester === 0 ? 'selected' : '' ?>>— все —</option>
+                            <?php foreach ($adminSemesters as $sm): ?>
+                                <option value="<?= (int) $sm['id'] ?>"
+                                        <?= (int) $adminSubjectsFilterSemester === (int) $sm['id'] ? 'selected' : '' ?>>
+                                    <?= e($sm['year_name']) ?> · <?= e(semester_label($sm['name'], $sm['is_practice'])) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
                 </form>
 
                 <?php if ($adminSubjects === []): ?>
@@ -434,7 +610,7 @@ $typesMeta = project_types_meta();
                                     <th style="width:130px;">Краткое</th>
                                     <th>Полное название</th>
                                     <th style="width:90px;">Часов</th>
-                                    <th style="width:170px;">Семестр / Практика</th>
+                                    <th style="width:170px;">Семестр</th>
                                     <th style="width:280px;">Действия</th>
                                 </tr>
                             </thead>
@@ -453,11 +629,7 @@ $typesMeta = project_types_meta();
                                         <td><?= e($s['full_name']) ?></td>
                                         <td><?= (int) $s['hours'] ?></td>
                                         <td style="font-size:0.82rem; color:var(--color-tertiary);">
-                                            <?php if ($s['semester_practice'] !== ''): ?>
-                                                <?= e($s['semester_practice']) ?>
-                                            <?php else: ?>
-                                                —
-                                            <?php endif; ?>
+                                            <?= e(semester_label($s['semester_name'], $s['semester_is_practice'])) ?>
                                         </td>
                                         <td class="pzk-table__actions">
                                             <details class="pzk-row-details">
@@ -467,13 +639,14 @@ $typesMeta = project_types_meta();
                                                     <?= csrf_field() ?>
                                                     <input type="hidden" name="id" value="<?= (int) $s['id'] ?>">
                                                     <label class="pzk-field">
-                                                        <span class="pzk-field__label">Учебный год</span>
-                                                        <select name="academic_year_id" required
+                                                        <span class="pzk-field__label">Семестр</span>
+                                                        <select name="semester_id" required
                                                                 class="pzk-field__input pzk-field__input--sm">
-                                                            <?php foreach ($adminAcademicYears as $ay): ?>
-                                                                <option value="<?= (int) $ay['id'] ?>"
-                                                                        <?= (int) $ay['id'] === (int) $s['academic_year_id'] ? 'selected' : '' ?>>
-                                                                    <?= e($ay['name']) ?>
+                                                            <?php foreach ($adminAllSemesters as $sm): ?>
+                                                                <option value="<?= (int) $sm['id'] ?>"
+                                                                        data-year="<?= (int) $sm['academic_year_id'] ?>"
+                                                                        <?= (int) $sm['id'] === (int) $s['semester_id'] ? 'selected' : '' ?>>
+                                                                    <?= e($sm['year_name']) ?> · <?= e(semester_label($sm['name'], $sm['is_practice'])) ?>
                                                                 </option>
                                                             <?php endforeach; ?>
                                                         </select>
@@ -509,13 +682,6 @@ $typesMeta = project_types_meta();
                                                                required min="0" step="1" autocomplete="off"
                                                                class="pzk-field__input pzk-field__input--sm">
                                                     </label>
-                                                    <label class="pzk-field">
-                                                        <span class="pzk-field__label">Семестр / Практика</span>
-                                                        <input type="text" name="semester_practice"
-                                                               value="<?= e((string) $s['semester_practice']) ?>"
-                                                               autocomplete="off"
-                                                               class="pzk-field__input pzk-field__input--sm">
-                                                    </label>
                                                     <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Сохранить</button>
                                                 </form>
                                             </details>
@@ -541,19 +707,20 @@ $typesMeta = project_types_meta();
                         <div>
                             <h3 class="pzk-form__title">Новый предмет</h3>
                             <p class="pzk-form__hint">
-                                Предмет принадлежит одному учебному году и одной группе этого года.
-                                Каждому семестру или практике — отдельная запись: разбивать год на семестры не нужно,
-                                просто у каждой части свой предмет.
+                                Предмет относится к семестру, а семестр — к учебному году.
+                                Учебный год в форме не выбирается: он берётся из выбранного семестра,
+                                а группа подставляется из года этого семестра.
                             </p>
                         </div>
                         <div class="pzk-form__grid">
                             <label class="pzk-field">
-                                <span class="pzk-field__label">Учебный год</span>
-                                <select class="pzk-field__input" name="academic_year_id" required>
-                                    <?php foreach ($adminAcademicYears as $ay): ?>
-                                        <option value="<?= (int) $ay['id'] ?>"
-                                                <?= (int) $ay['id'] === (int) $defaultSubjectYearId ? 'selected' : '' ?>>
-                                            <?= e($ay['name']) ?><?= (int) $ay['is_current'] === 1 ? ' (текущий)' : '' ?>
+                                <span class="pzk-field__label">Семестр</span>
+                                <select class="pzk-field__input" name="semester_id" required>
+                                    <?php foreach ($adminAllSemesters as $sm): ?>
+                                        <option value="<?= (int) $sm['id'] ?>"
+                                                data-year="<?= (int) $sm['academic_year_id'] ?>"
+                                                <?= (int) $sm['id'] === (int) $defaultSubjectSemesterId ? 'selected' : '' ?>>
+                                            <?= e($sm['year_name']) ?> · <?= e(semester_label($sm['name'], $sm['is_practice'])) ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
@@ -586,11 +753,6 @@ $typesMeta = project_types_meta();
                                 <input class="pzk-field__input" type="number" name="hours" min="0" step="1"
                                        autocomplete="off" placeholder="72">
                             </label>
-                            <label class="pzk-field">
-                                <span class="pzk-field__label">Семестр / Практика</span>
-                                <input class="pzk-field__input" type="text" name="semester_practice"
-                                       placeholder="1 семестр / производственная практика" autocomplete="off">
-                            </label>
                         </div>
                         <div class="pzk-form__actions">
                             <button type="submit" class="pzk-btn pzk-btn--primary">Создать предмет</button>
@@ -601,27 +763,29 @@ $typesMeta = project_types_meta();
                 <script>
                 (function () {
                     'use strict';
-                    // В формах предмета список групп ограничивается выбранным учебным годом.
+                    // В формах предмета список групп ограничивается годом выбранного семестра:
+                    // группа должна принадлежать тому же учебному году, что и семестр предмета.
                     document.querySelectorAll('.pzk-subject-form').forEach(function (form) {
-                        var yearSel  = form.querySelector('select[name="academic_year_id"]');
-                        var groupSel = form.querySelector('select[name="group_id"]');
-                        if (!yearSel || !groupSel) return;
+                        var semesterSel = form.querySelector('select[name="semester_id"]');
+                        var groupSel    = form.querySelector('select[name="group_id"]');
+                        if (!semesterSel || !groupSel) return;
 
                         function syncGroups() {
-                            var year = yearSel.value;
+                            var opt = semesterSel.options[semesterSel.selectedIndex];
+                            var year = opt ? opt.getAttribute('data-year') : null;
                             var current = groupSel.value;
                             var stillValid = false;
-                            groupSel.querySelectorAll('option').forEach(function (opt) {
-                                if (opt.value === '') return;              // служебная «— выберите группу —»
-                                var ok = opt.getAttribute('data-year') === year;
-                                opt.hidden = !ok;
-                                opt.disabled = !ok;
-                                if (ok && opt.value === current) stillValid = true;
+                            groupSel.querySelectorAll('option').forEach(function (o) {
+                                if (o.value === '') return;                // служебная «— выберите группу —»
+                                var ok = year === null || o.getAttribute('data-year') === year;
+                                o.hidden = !ok;
+                                o.disabled = !ok;
+                                if (ok && o.value === current) stillValid = true;
                             });
                             groupSel.value = stillValid ? current : '';
                         }
 
-                        yearSel.addEventListener('change', syncGroups);
+                        semesterSel.addEventListener('change', syncGroups);
                         syncGroups();
                     });
                 })();
@@ -661,9 +825,7 @@ $typesMeta = project_types_meta();
                             </h3>
                             <span style="font-size:0.82rem; color:var(--color-tertiary);">
                                 <?= e($subj['group_name']) ?>
-                                <?php if ($subj['semester_practice'] !== ''): ?>
-                                    · <?= e($subj['semester_practice']) ?>
-                                <?php endif; ?>
+                                · <?= e(semester_label($subj['semester_name'], $subj['semester_is_practice'])) ?>
                                 · <?= (int) $subj['hours'] ?> ч.
                             </span>
                         </div>
@@ -760,7 +922,7 @@ $typesMeta = project_types_meta();
                                     </p>
                                 </div>
                                 <label class="pzk-field">
-                                    <span class="pzk-field__label">Темы (<?= e($subj['short_name']) ?><?= $subj['semester_practice'] !== '' ? ' · ' . e($subj['semester_practice']) : '' ?>)</span>
+                                    <span class="pzk-field__label">Темы (<?= e($subj['short_name']) ?> · <?= e(semester_label($subj['semester_name'], $subj['semester_is_practice'])) ?>)</span>
                                     <textarea class="pzk-field__textarea" name="topics" rows="12" required
                                               placeholder="Введение в предмет&#10;Основные понятия и определения&#10;..."></textarea>
                                 </label>
@@ -865,9 +1027,7 @@ $typesMeta = project_types_meta();
                                                                 <option value="<?= (int) $subj['id'] ?>"
                                                                         <?= ($cell && (int) $cell['subject_id'] === (int) $subj['id']) ? 'selected' : '' ?>>
                                                                     <?= e($subj['short_name']) ?>
-                                                                    <?php if ($subj['semester_practice'] !== ''): ?>
-                                                                        · <?= e($subj['semester_practice']) ?>
-                                                                    <?php endif; ?>
+                                                                    · <?= e(semester_label($subj['semester_name'], $subj['semester_is_practice'])) ?>
                                                                 </option>
                                                             <?php endforeach; ?>
                                                         </select>

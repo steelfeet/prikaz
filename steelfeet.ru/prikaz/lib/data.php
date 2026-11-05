@@ -167,9 +167,12 @@ $defaultGroupYearId = 0;
 $adminSubjects = [];
 $adminSubjectsFilterYear = 0;
 $adminSubjectsFilterGroup = 0;
+$adminSubjectsFilterSemester = 0;
 $adminAllGroups = [];
-$defaultSubjectYearId = 0;
+$adminSemesters = [];
+$adminAllSemesters = [];
 $defaultSubjectGroupId = 0;
+$defaultSubjectSemesterId = 0;
 $adminCurrentYearSubjectCount = 0;
 $adminCurriculum = [];
 $adminScheduleGroupId = 0;
@@ -251,9 +254,17 @@ if ($viewRole === 'admin') {
         $defaultGroupYearId = (int) $adminAcademicYears[0]['id'];
     }
 
+    // ===== Семестры =====
+    $adminAllSemesters = $pdo->query(
+        'SELECT sm.*, ay.name AS year_name, ay.is_current AS year_is_current
+         FROM semesters sm
+         JOIN academic_years ay ON ay.id = sm.academic_year_id
+         ORDER BY ay.start_date DESC, sm.ord, sm.name'
+    )->fetchAll();
+
     // ===== Предметы =====
-    // Фильтры такие же, как у групп: по умолчанию — текущий учебный год,
-    // subject_year=0 / subject_group=0 — «Все».
+    // Год берётся через семестр: предмет относится к семестру, а не к году напрямую.
+    // subject_year=0 — «все годы», subject_semester=0 — «все семестры».
     if (isset($_GET['subject_year'])) {
         $adminSubjectsFilterYear = (int) $_GET['subject_year'];
     } elseif ($adminCurrentYear !== null) {
@@ -263,25 +274,38 @@ if ($viewRole === 'admin') {
     } else {
         $adminSubjectsFilterYear = 0;
     }
-    $adminSubjectsFilterGroup = isset($_GET['subject_group']) ? (int) $_GET['subject_group'] : 0;
+    $adminSubjectsFilterGroup   = isset($_GET['subject_group'])   ? (int) $_GET['subject_group']   : 0;
+    $adminSubjectsFilterSemester = isset($_GET['subject_semester']) ? (int) $_GET['subject_semester'] : 0;
 
     $sql = 'SELECT s.*,
-                   ay.name     AS year_name,
-                   ay.is_current AS year_is_current,
-                   g.name      AS group_name
+                   sm.name        AS semester_name,
+                   sm.is_practice AS semester_is_practice,
+                   sm.ord         AS semester_ord,
+                   ay.name        AS year_name,
+                   ay.is_current  AS year_is_current,
+                   g.name         AS group_name
             FROM subjects s
-            JOIN academic_years ay ON ay.id = s.academic_year_id
+            JOIN semesters sm     ON sm.id = s.semester_id
+            JOIN academic_years ay ON ay.id = sm.academic_year_id
             JOIN groups g          ON g.id = s.group_id';
     $params = [];
+    $where  = [];
     if ($adminSubjectsFilterYear > 0) {
-        $sql .= ' WHERE s.academic_year_id = :y';
+        $where[] = 'sm.academic_year_id = :y';
         $params[':y'] = $adminSubjectsFilterYear;
     }
     if ($adminSubjectsFilterGroup > 0) {
-        $sql .= ($params === [] ? ' WHERE' : ' AND') . ' s.group_id = :g';
+        $where[] = 's.group_id = :g';
         $params[':g'] = $adminSubjectsFilterGroup;
     }
-    $sql .= ' ORDER BY ay.start_date DESC, g.name, s.short_name, s.semester_practice';
+    if ($adminSubjectsFilterSemester > 0) {
+        $where[] = 's.semester_id = :sm';
+        $params[':sm'] = $adminSubjectsFilterSemester;
+    }
+    if ($where !== []) {
+        $sql .= ' WHERE ' . implode(' AND ', $where);
+    }
+    $sql .= ' ORDER BY ay.start_date DESC, sm.ord, sm.name, g.name, s.short_name';
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $adminSubjects = $stmt->fetchAll();
@@ -294,17 +318,25 @@ if ($viewRole === 'admin') {
          ORDER BY ay.start_date DESC, g.name'
     )->fetchAll();
 
-    if ($adminSubjectsFilterYear > 0) {
-        $defaultSubjectYearId = $adminSubjectsFilterYear;
-    } elseif ($adminCurrentYear !== null) {
-        $defaultSubjectYearId = (int) $adminCurrentYear['id'];
-    } elseif ($adminAcademicYears !== []) {
-        $defaultSubjectYearId = (int) $adminAcademicYears[0]['id'];
+    // Семестры выбранного года — для селекта и фильтра «Семестр».
+    foreach ($adminAllSemesters as $sm) {
+        if ($adminSubjectsFilterYear === 0 || (int) $sm['academic_year_id'] === $adminSubjectsFilterYear) {
+            $adminSemesters[] = $sm;
+        }
     }
-    $defaultSubjectGroupId = $adminSubjectsFilterGroup;
+
+    $defaultSubjectGroupId    = $adminSubjectsFilterGroup;
+    $defaultSubjectSemesterId = $adminSubjectsFilterSemester;
+    if ($defaultSubjectSemesterId === 0 && $adminSemesters !== []) {
+        $defaultSubjectSemesterId = (int) $adminSemesters[0]['id'];
+    }
 
     if ($adminCurrentYear !== null) {
-        $stmt = $pdo->prepare('SELECT COUNT(*) FROM subjects WHERE academic_year_id = :y');
+        $stmt = $pdo->prepare(
+            'SELECT COUNT(*) FROM subjects s
+             JOIN semesters sm ON sm.id = s.semester_id
+             WHERE sm.academic_year_id = :y'
+        );
         $stmt->execute([':y' => (int) $adminCurrentYear['id']]);
         $adminCurrentYearSubjectCount = (int) $stmt->fetchColumn();
     }
@@ -313,11 +345,14 @@ if ($viewRole === 'admin') {
     $adminCurriculum = [];
     if ($adminCurrentYear !== null) {
         $stmt = $pdo->prepare(
-            'SELECT s.id, s.short_name, s.full_name, s.semester_practice, s.hours, g.name AS group_name
+            'SELECT s.id, s.short_name, s.full_name, s.hours,
+                    sm.name AS semester_name, sm.is_practice AS semester_is_practice,
+                    g.name AS group_name
              FROM subjects s
-             JOIN groups g ON g.id = s.group_id
-             WHERE s.academic_year_id = :y
-             ORDER BY g.name, s.short_name, s.semester_practice'
+             JOIN semesters sm ON sm.id = s.semester_id
+             JOIN groups g     ON g.id = s.group_id
+             WHERE sm.academic_year_id = :y
+             ORDER BY sm.ord, sm.name, g.name, s.short_name'
         );
         $stmt->execute([':y' => (int) $adminCurrentYear['id']]);
         $subjectsRows = $stmt->fetchAll();
@@ -374,8 +409,12 @@ if ($viewRole === 'admin') {
 
         // Предметы группы (для селектов).
         $stmt = $pdo->prepare(
-            'SELECT s.id, s.short_name, s.full_name, s.semester_practice
-             FROM subjects s WHERE s.group_id = :g ORDER BY s.short_name, s.semester_practice'
+            'SELECT s.id, s.short_name, s.full_name,
+                    sm.name AS semester_name, sm.is_practice AS semester_is_practice
+             FROM subjects s
+             JOIN semesters sm ON sm.id = s.semester_id
+             WHERE s.group_id = :g
+             ORDER BY sm.ord, sm.name, s.short_name'
         );
         $stmt->execute([':g' => $adminScheduleGroupId]);
         $adminScheduleSubjects = $stmt->fetchAll();

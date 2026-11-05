@@ -159,3 +159,19 @@ function parse_topic_lines(string $raw): array
 
     return ['topics' => $topics, 'empty' => $empty, 'invalid' => $invalid];
 }
+
+/**
+ * Возвращает читаемую метку семестра: «1 семестр», «производственная практика».
+ *
+ * Для практических семестров добавляет пометку, только если слово
+ * «практика» ещё не упомянуто в названии (названия мигрировали из
+ * свободного текста, где она уже могла быть указана).
+ */
+function semester_label(string $name, int|string $isPractice): string
+{
+    $label = trim($name);
+    if ((int) $isPractice === 1 && mb_stripos($label, 'практик') === false) {
+        $label .= ' · практика';
+    }
+    return $label;
+}

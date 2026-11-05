@@ -152,6 +152,15 @@ if ($action === 'admin_academic_year_save') {
             )->execute([':n' => $name, ':s' => $startDate, ':e' => $endDate, ':c' => $isCurrent]);
             $newId = (int) $pdo->lastInsertId();
             audit_log((int) $currentUser['id'], 'academic_year_create', 'academic_year', $newId);
+
+            // Базовые семестры нового года: админ может переименовать их или удалить.
+            $semStmt = $pdo->prepare(
+                'INSERT INTO semesters (academic_year_id, name, is_practice, ord)
+                 VALUES (:y, :n, 0, :o)'
+            );
+            foreach (['1 семестр' => 1, '2 семестр' => 2] as $semName => $semOrd) {
+                $semStmt->execute([':y' => $newId, ':n' => $semName, ':o' => $semOrd]);
+            }
         }
         $pdo->commit();
         flash_set('success', 'Учебный год сохранён.');
@@ -281,21 +290,114 @@ if ($action === 'admin_group_delete') {
     redirect('index.php?page=admin&section=groups');
 }
 
-// ===== ПРЕДМЕТ: сохранение (создание / редактирование) =====
-if ($action === 'admin_subject_save') {
+// ===== СЕМЕСТР: сохранение (создание / редактирование) =====
+if ($action === 'admin_semester_save') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
 
     $id             = (int) ($_POST['id'] ?? 0);
     $academicYearId = (int) ($_POST['academic_year_id'] ?? 0);
-    $groupId        = (int) ($_POST['group_id'] ?? 0);
-    $shortName      = trim((string) ($_POST['short_name'] ?? ''));
-    $fullName       = trim((string) ($_POST['full_name'] ?? ''));
-    $hoursRaw       = trim((string) ($_POST['hours'] ?? ''));
-    $semester       = trim((string) ($_POST['semester_practice'] ?? ''));
+    $name           = trim((string) ($_POST['name'] ?? ''));
+    $isPractice     = isset($_POST['is_practice']) ? 1 : 0;
+    $ordRaw         = trim((string) ($_POST['ord'] ?? ''));
 
-    // Возврат в тот же год, к которому относится предмет.
+    $backUrl = 'index.php?page=admin&section=academic_years';
+
+    if ($name === '') {
+        flash_set('danger', 'Укажите название семестра.');
+        redirect($backUrl);
+    }
+    if ($academicYearId <= 0) {
+        flash_set('danger', 'Выберите учебный год.');
+        redirect($backUrl);
+    }
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM academic_years WHERE id = :id');
+    $stmt->execute([':id' => $academicYearId]);
+    if ((int) $stmt->fetchColumn() === 0) {
+        flash_set('danger', 'Учебный год не найден.');
+        redirect($backUrl);
+    }
+    if ($ordRaw === '') {
+        $ord = 1;
+    } elseif (!preg_match('/^\d{1,4}$/', $ordRaw) || (int) $ordRaw < 1) {
+        flash_set('danger', 'Порядковый номер — целое число от 1 до 9999.');
+        redirect($backUrl);
+    } else {
+        $ord = (int) $ordRaw;
+    }
+
+    try {
+        if ($id > 0) {
+            $pdo->prepare(
+                'UPDATE semesters
+                 SET academic_year_id = :y, name = :n, is_practice = :p, ord = :o
+                 WHERE id = :id'
+            )->execute([
+                ':y'  => $academicYearId,
+                ':n'  => $name,
+                ':p'  => $isPractice,
+                ':o'  => $ord,
+                ':id' => $id,
+            ]);
+            audit_log((int) $currentUser['id'], 'semester_update', 'semester', $id);
+            flash_set('success', 'Семестр сохранён.');
+        } else {
+            $pdo->prepare(
+                'INSERT INTO semesters (academic_year_id, name, is_practice, ord)
+                 VALUES (:y, :n, :p, :o)'
+            )->execute([
+                ':y' => $academicYearId,
+                ':n' => $name,
+                ':p' => $isPractice,
+                ':o' => $ord,
+            ]);
+            $newId = (int) $pdo->lastInsertId();
+            audit_log((int) $currentUser['id'], 'semester_create', 'semester', $newId);
+            flash_set('success', 'Семестр создан.');
+        }
+    } catch (PDOException $e) {
+        if (str_contains($e->getMessage(), 'UNIQUE')) {
+            flash_set('danger', 'Семестр с таким названием уже есть в этом учебном году.');
+        } else {
+            flash_set('danger', 'Ошибка: ' . $e->getMessage());
+        }
+    }
+    redirect($backUrl);
+}
+
+// ===== СЕМЕСТР: удаление =====
+if ($action === 'admin_semester_delete') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+    $id = (int) ($_POST['id'] ?? 0);
+    try {
+        $pdo->prepare('DELETE FROM semesters WHERE id = :id')->execute([':id' => $id]);
+        audit_log((int) $currentUser['id'], 'semester_delete', 'semester', $id);
+        flash_set('success', 'Семестр удалён.');
+    } catch (Throwable $e) {
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect('index.php?page=admin&section=academic_years');
+}
+
+// ===== ПРЕДМЕТ: сохранение (создание / редактирование) =====
+if ($action === 'admin_subject_save') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $id          = (int) ($_POST['id'] ?? 0);
+    $semesterId  = (int) ($_POST['semester_id'] ?? 0);
+    $groupId     = (int) ($_POST['group_id'] ?? 0);
+    $shortName   = trim((string) ($_POST['short_name'] ?? ''));
+    $fullName    = trim((string) ($_POST['full_name'] ?? ''));
+    $hoursRaw    = trim((string) ($_POST['hours'] ?? ''));
+
+    // Возврат в тот же год, к которому относится выбранный семестр.
+    $backYearId = 0;
+    if ($semesterId > 0) {
+        $stmt = $pdo->prepare('SELECT academic_year_id FROM semesters WHERE id = :id');
+        $stmt->execute([':id' => $semesterId]);
+        $backYearId = (int) $stmt->fetchColumn();
+    }
     $backUrl = 'index.php?page=admin&section=subjects'
-        . ($academicYearId > 0 ? '&subject_year=' . $academicYearId : '');
+        . ($backYearId > 0 ? '&subject_year=' . $backYearId : '');
 
     if ($shortName === '') {
         flash_set('danger', 'Укажите краткое название предмета.');
@@ -318,6 +420,20 @@ if ($action === 'admin_subject_save') {
         $hours = (int) $hoursRaw;
     }
 
+    // Семестр определяет учебный год предмета.
+    $stmt = $pdo->prepare(
+        'SELECT sm.id, sm.name AS semester_name, sm.academic_year_id, ay.name AS year_name
+         FROM semesters sm
+         JOIN academic_years ay ON ay.id = sm.academic_year_id
+         WHERE sm.id = :id'
+    );
+    $stmt->execute([':id' => $semesterId]);
+    $semester = $stmt->fetch();
+    if (!$semester) {
+        flash_set('danger', 'Семестр не найден. Сначала создайте семестр в разделе «Учебный год».');
+        redirect($backUrl);
+    }
+
     $stmt = $pdo->prepare(
         'SELECT g.id, g.academic_year_id, g.name AS group_name, ay.name AS year_name
          FROM groups g
@@ -330,27 +446,26 @@ if ($action === 'admin_subject_save') {
         flash_set('danger', 'Группа не найдена.');
         redirect($backUrl);
     }
-    if ($academicYearId > 0 && $academicYearId !== (int) $group['academic_year_id']) {
+    if ((int) $group['academic_year_id'] !== (int) $semester['academic_year_id']) {
         flash_set('danger', 'Группа «' . $group['group_name'] . '» относится к учебному году «'
-            . $group['year_name'] . '». Выберите год этой группы.');
+            . $group['year_name'] . '», а семестр «' . $semester['semester_name'] . '» — к году «'
+            . $semester['year_name'] . '». Выберите группу года этого семестра.');
         redirect($backUrl);
     }
-    $academicYearId = (int) $group['academic_year_id'];
 
     try {
         if ($id > 0) {
             $pdo->prepare(
                 'UPDATE subjects
-                 SET academic_year_id = :y, group_id = :g, short_name = :sn, full_name = :fn,
-                     hours = :h, semester_practice = :sp, updated_at = :t
+                 SET semester_id = :sm, group_id = :g, short_name = :sn, full_name = :fn,
+                     hours = :h, updated_at = :t
                  WHERE id = :id'
             )->execute([
-                ':y'  => $academicYearId,
+                ':sm' => $semesterId,
                 ':g'  => $groupId,
                 ':sn' => $shortName,
                 ':fn' => $fullName,
                 ':h'  => $hours,
-                ':sp' => $semester,
                 ':t'  => date('Y-m-d H:i:s'),
                 ':id' => $id,
             ]);
@@ -358,15 +473,14 @@ if ($action === 'admin_subject_save') {
             flash_set('success', 'Предмет сохранён.');
         } else {
             $pdo->prepare(
-                'INSERT INTO subjects (academic_year_id, group_id, short_name, full_name, hours, semester_practice)
-                 VALUES (:y, :g, :sn, :fn, :h, :sp)'
+                'INSERT INTO subjects (semester_id, group_id, short_name, full_name, hours)
+                 VALUES (:sm, :g, :sn, :fn, :h)'
             )->execute([
-                ':y'  => $academicYearId,
+                ':sm' => $semesterId,
                 ':g'  => $groupId,
                 ':sn' => $shortName,
                 ':fn' => $fullName,
                 ':h'  => $hours,
-                ':sp' => $semester,
             ]);
             $newId = (int) $pdo->lastInsertId();
             audit_log((int) $currentUser['id'], 'subject_create', 'subject', $newId);
@@ -374,7 +488,7 @@ if ($action === 'admin_subject_save') {
         }
     } catch (PDOException $e) {
         if (str_contains($e->getMessage(), 'UNIQUE')) {
-            flash_set('danger', 'Предмет с таким кратким названием и семестром / практикой уже есть у этой группы в этом году.');
+            flash_set('danger', 'У этой группы в этом семестре уже есть предмет с таким кратким названием.');
         } else {
             flash_set('danger', 'Ошибка: ' . $e->getMessage());
         }
@@ -388,7 +502,11 @@ if ($action === 'admin_subject_delete') {
     $id = (int) ($_POST['id'] ?? 0);
     $backUrl = 'index.php?page=admin&section=subjects';
     try {
-        $stmt = $pdo->prepare('SELECT academic_year_id FROM subjects WHERE id = :id');
+        $stmt = $pdo->prepare(
+            'SELECT sm.academic_year_id FROM subjects s
+             JOIN semesters sm ON sm.id = s.semester_id
+             WHERE s.id = :id'
+        );
         $stmt->execute([':id' => $id]);
         $yearId = (int) $stmt->fetchColumn();
         $pdo->prepare('DELETE FROM subjects WHERE id = :id')->execute([':id' => $id]);
