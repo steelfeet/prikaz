@@ -130,6 +130,8 @@ $typesMeta = project_types_meta();
                         <p class="pzk-form__hint">
                             Название в формате «2025/2026». Текущий год — один на всю систему:
                             назначение нового автоматически снимает флаг с предыдущего.
+                            Семестры создаются автоматически («1 семестр», «2 семестр») — их можно
+                            переименовать и дополнить в разделе «Учебный год».
                         </p>
                     </div>
                     <div class="pzk-form__grid">
@@ -155,171 +157,6 @@ $typesMeta = project_types_meta();
                     </label>
                     <div class="pzk-form__actions">
                         <button type="submit" class="pzk-btn pzk-btn--primary">Создать учебный год</button>
-                    </div>
-                </form>
-            </details>
-        </section>
-
-        <?php
-            // Семестры сгруппированы по годам в том же порядке, что и таблица годов.
-            $semestersByYear = [];
-            foreach ($adminAllSemesters as $sm) {
-                $semestersByYear[(int) $sm['academic_year_id']][] = $sm;
-            }
-        ?>
-        <section class="panel" style="margin-top: var(--space-xl);">
-            <div class="panel__head">
-                <div>
-                    <h2 class="panel__title">Семестры</h2>
-                    <p class="panel__subtitle">
-                        Семестры относятся к учебному году, а предметы — к семестрам.
-                        Отметьте «учебная практика», если это практика, а не учебный семестр.
-                        Новому учебному году автоматически создаются «1 семестр» и «2 семестр».
-                    </p>
-                </div>
-                <a href="#add-semester" class="pzk-btn pzk-btn--primary" data-open-details>
-                    ➕ Добавить
-                </a>
-            </div>
-
-            <?php if ($adminAcademicYears === []): ?>
-                <div class="uni-empty">Сначала создайте учебный год.</div>
-            <?php elseif ($adminAllSemesters === []): ?>
-                <div class="uni-empty">Семестров пока нет. Добавьте первый.</div>
-            <?php else: ?>
-                <?php foreach ($adminAcademicYears as $ay): ?>
-                    <?php $yearSemesters = $semestersByYear[(int) $ay['id']] ?? []; ?>
-                    <div style="margin-bottom: var(--space-lg);">
-                        <h3 style="font-family:'Cormorant Garamond','Inter',serif; font-size:1.05rem; font-weight:600; margin:0 0 var(--space-sm);">
-                            <?= e($ay['name']) ?>
-                            <?php if ((int) $ay['is_current'] === 1): ?>
-                                <span class="pzk-status pzk-status--active" style="margin-left:6px;">текущий</span>
-                            <?php endif; ?>
-                        </h3>
-                        <?php if ($yearSemesters === []): ?>
-                            <div class="uni-empty">В этом году семестров пока нет.</div>
-                        <?php else: ?>
-                            <div class="pzk-table-wrap">
-                                <table class="pzk-table">
-                                    <thead>
-                                        <tr>
-                                            <th style="width:60px;">ID</th>
-                                            <th style="width:80px;">№</th>
-                                            <th>Название</th>
-                                            <th style="width:150px;">Практика</th>
-                                            <th style="width:280px;">Действия</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php foreach ($yearSemesters as $sm): ?>
-                                            <tr>
-                                                <td><?= (int) $sm['id'] ?></td>
-                                                <td><?= (int) $sm['ord'] ?></td>
-                                                <td><strong><?= e($sm['name']) ?></strong></td>
-                                                <td>
-                                                    <?php if ((int) $sm['is_practice'] === 1): ?>
-                                                        <span class="pzk-status pzk-status--active">учебная практика</span>
-                                                    <?php else: ?>
-                                                        <span style="color:var(--color-tertiary);">—</span>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td class="pzk-table__actions">
-                                                    <details class="pzk-row-details">
-                                                        <summary class="pzk-btn pzk-btn--sm">Редактировать</summary>
-                                                        <form method="post" action="index.php?action=admin_semester_save"
-                                                              class="pzk-edit-form" autocomplete="off">
-                                                            <?= csrf_field() ?>
-                                                            <input type="hidden" name="id" value="<?= (int) $sm['id'] ?>">
-                                                            <label class="pzk-field">
-                                                                <span class="pzk-field__label">Учебный год</span>
-                                                                <select name="academic_year_id" required
-                                                                        class="pzk-field__input pzk-field__input--sm">
-                                                                    <?php foreach ($adminAcademicYears as $yOpt): ?>
-                                                                        <option value="<?= (int) $yOpt['id'] ?>"
-                                                                                <?= (int) $yOpt['id'] === (int) $sm['academic_year_id'] ? 'selected' : '' ?>>
-                                                                            <?= e($yOpt['name']) ?>
-                                                                        </option>
-                                                                    <?php endforeach; ?>
-                                                                </select>
-                                                            </label>
-                                                            <label class="pzk-field">
-                                                                <span class="pzk-field__label">Название</span>
-                                                                <input type="text" name="name" value="<?= e($sm['name']) ?>"
-                                                                       required autocomplete="off"
-                                                                       class="pzk-field__input pzk-field__input--sm">
-                                                            </label>
-                                                            <label class="pzk-field">
-                                                                <span class="pzk-field__label">Порядок</span>
-                                                                <input type="number" name="ord" value="<?= (int) $sm['ord'] ?>"
-                                                                       required min="1" step="1" autocomplete="off"
-                                                                       class="pzk-field__input pzk-field__input--sm">
-                                                            </label>
-                                                            <label class="pzk-checkbox">
-                                                                <input type="checkbox" name="is_practice" value="1"
-                                                                       <?= (int) $sm['is_practice'] === 1 ? 'checked' : '' ?>>
-                                                                Учебная практика
-                                                            </label>
-                                                            <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Сохранить</button>
-                                                        </form>
-                                                    </details>
-                                                    <form method="post" action="index.php?action=admin_semester_delete"
-                                                          onsubmit="return confirm('Удалить семестр «<?= e($sm['name']) ?>»? Предметы этого семестра тоже будут удалены.');">
-                                                        <?= csrf_field() ?>
-                                                        <input type="hidden" name="id" value="<?= (int) $sm['id'] ?>">
-                                                        <button type="submit" class="pzk-btn pzk-btn--sm">Удалить</button>
-                                                    </form>
-                                                </td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
-
-            <details class="pzk-details" id="add-semester" style="margin-top: var(--space-lg);">
-                <summary class="pzk-details__summary">➕ Добавить семестр</summary>
-                <form method="post" action="index.php?action=admin_semester_save"
-                      class="pzk-form" autocomplete="off">
-                    <?= csrf_field() ?>
-                    <div>
-                        <h3 class="pzk-form__title">Новый семестр</h3>
-                        <p class="pzk-form__hint">
-                            Например: «1 семестр», «2 семестр» или «производственная практика».
-                            В одном учебном году названия не должны повторяться.
-                        </p>
-                    </div>
-                    <div class="pzk-form__grid">
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Учебный год</span>
-                            <select class="pzk-field__input" name="academic_year_id" required>
-                                <?php foreach ($adminAcademicYears as $ay): ?>
-                                    <option value="<?= (int) $ay['id'] ?>"
-                                            <?= $adminCurrentYear !== null && (int) $ay['id'] === (int) $adminCurrentYear['id'] ? 'selected' : '' ?>>
-                                        <?= e($ay['name']) ?><?= (int) $ay['is_current'] === 1 ? ' (текущий)' : '' ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </label>
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Название</span>
-                            <input class="pzk-field__input" type="text" name="name" required
-                                   placeholder="1 семестр" autocomplete="off">
-                        </label>
-                        <label class="pzk-field">
-                            <span class="pzk-field__label">Порядок</span>
-                            <input class="pzk-field__input" type="number" name="ord" required min="1" step="1"
-                                   value="1" autocomplete="off">
-                        </label>
-                    </div>
-                    <label class="pzk-checkbox">
-                        <input type="checkbox" name="is_practice" value="1">
-                        Учебная практика
-                    </label>
-                    <div class="pzk-form__actions">
-                        <button type="submit" class="pzk-btn pzk-btn--primary">Создать семестр</button>
                     </div>
                 </form>
             </details>
@@ -524,8 +361,8 @@ $typesMeta = project_types_meta();
                 <div>
                     <h2 class="panel__title">Предметы</h2>
                     <p class="panel__subtitle">
-                        Предмет привязан к группе и к семестру, а семестр — к учебному году.
-                        Учебный год в форме предмета не выбирается: он берётся из семестра.
+                        Каждый учебный год — свой набор предметов. Предмет привязан к группе,
+                        у каждого семестра или практики — свой предмет.
                         <?php if ($adminCurrentYear !== null): ?>
                             В текущем году <strong><?= e($adminCurrentYear['name']) ?></strong>
                             предметов: <strong><?= $adminCurrentYearSubjectCount ?></strong>.
@@ -576,17 +413,6 @@ $typesMeta = project_types_meta();
                                 <?php endforeach; ?>
                         </select>
                     </label>
-                    <label>Семестр:
-                        <select name="subject_semester" class="pzk-field__input" onchange="this.form.submit();">
-                            <option value="0" <?= $adminSubjectsFilterSemester === 0 ? 'selected' : '' ?>>— все —</option>
-                            <?php foreach ($adminSemesters as $sm): ?>
-                                <option value="<?= (int) $sm['id'] ?>"
-                                        <?= (int) $adminSubjectsFilterSemester === (int) $sm['id'] ? 'selected' : '' ?>>
-                                    <?= e($sm['year_name']) ?> · <?= e(semester_label($sm['name'], $sm['is_practice'])) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </label>
                 </form>
 
                 <?php if ($adminSubjects === []): ?>
@@ -610,7 +436,7 @@ $typesMeta = project_types_meta();
                                     <th style="width:130px;">Краткое</th>
                                     <th>Полное название</th>
                                     <th style="width:90px;">Часов</th>
-                                    <th style="width:170px;">Семестр</th>
+                                    <th style="width:170px;">Семестр / Практика</th>
                                     <th style="width:280px;">Действия</th>
                                 </tr>
                             </thead>
@@ -629,7 +455,11 @@ $typesMeta = project_types_meta();
                                         <td><?= e($s['full_name']) ?></td>
                                         <td><?= (int) $s['hours'] ?></td>
                                         <td style="font-size:0.82rem; color:var(--color-tertiary);">
-                                            <?= e(semester_label($s['semester_name'], $s['semester_is_practice'])) ?>
+                                            <?php if ($s['semester_name'] !== ''): ?>
+                                                <?= e($s['semester_name']) ?>
+                                            <?php else: ?>
+                                                —
+                                            <?php endif; ?>
                                         </td>
                                         <td class="pzk-table__actions">
                                             <details class="pzk-row-details">
@@ -639,14 +469,13 @@ $typesMeta = project_types_meta();
                                                     <?= csrf_field() ?>
                                                     <input type="hidden" name="id" value="<?= (int) $s['id'] ?>">
                                                     <label class="pzk-field">
-                                                        <span class="pzk-field__label">Семестр</span>
-                                                        <select name="semester_id" required
+                                                        <span class="pzk-field__label">Учебный год</span>
+                                                        <select name="academic_year_id" required
                                                                 class="pzk-field__input pzk-field__input--sm">
-                                                            <?php foreach ($adminAllSemesters as $sm): ?>
-                                                                <option value="<?= (int) $sm['id'] ?>"
-                                                                        data-year="<?= (int) $sm['academic_year_id'] ?>"
-                                                                        <?= (int) $sm['id'] === (int) $s['semester_id'] ? 'selected' : '' ?>>
-                                                                    <?= e($sm['year_name']) ?> · <?= e(semester_label($sm['name'], $sm['is_practice'])) ?>
+                                                            <?php foreach ($adminAcademicYears as $ay): ?>
+                                                                <option value="<?= (int) $ay['id'] ?>"
+                                                                        <?= (int) $ay['id'] === (int) $s['academic_year_id'] ? 'selected' : '' ?>>
+                                                                    <?= e($ay['name']) ?>
                                                                 </option>
                                                             <?php endforeach; ?>
                                                         </select>
@@ -707,20 +536,19 @@ $typesMeta = project_types_meta();
                         <div>
                             <h3 class="pzk-form__title">Новый предмет</h3>
                             <p class="pzk-form__hint">
-                                Предмет относится к семестру, а семестр — к учебному году.
-                                Учебный год в форме не выбирается: он берётся из выбранного семестра,
-                                а группа подставляется из года этого семестра.
+                                Предмет принадлежит одному учебному году, одной группе этого года
+                                и одному семестру. Если у группы два семестра — это две отдельные
+                                записи предмета (даже если предмет один и тот же).
                             </p>
                         </div>
                         <div class="pzk-form__grid">
                             <label class="pzk-field">
-                                <span class="pzk-field__label">Семестр</span>
-                                <select class="pzk-field__input" name="semester_id" required>
-                                    <?php foreach ($adminAllSemesters as $sm): ?>
-                                        <option value="<?= (int) $sm['id'] ?>"
-                                                data-year="<?= (int) $sm['academic_year_id'] ?>"
-                                                <?= (int) $sm['id'] === (int) $defaultSubjectSemesterId ? 'selected' : '' ?>>
-                                            <?= e($sm['year_name']) ?> · <?= e(semester_label($sm['name'], $sm['is_practice'])) ?>
+                                <span class="pzk-field__label">Учебный год</span>
+                                <select class="pzk-field__input" name="academic_year_id" required>
+                                    <?php foreach ($adminAcademicYears as $ay): ?>
+                                        <option value="<?= (int) $ay['id'] ?>"
+                                                <?= (int) $ay['id'] === (int) $adminSubjectsFilterYear ? 'selected' : '' ?>>
+                                            <?= e($ay['name']) ?><?= (int) $ay['is_current'] === 1 ? ' (текущий)' : '' ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
@@ -734,6 +562,19 @@ $typesMeta = project_types_meta();
                                                 data-year="<?= (int) $g['academic_year_id'] ?>"
                                                 <?= (int) $g['id'] === (int) $defaultSubjectGroupId ? 'selected' : '' ?>>
                                             <?= e($g['name']) ?> · <?= e($g['year_name']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </label>
+                            <label class="pzk-field">
+                                <span class="pzk-field__label">Семестр / Практика</span>
+                                <select class="pzk-field__input" name="semester_id" required>
+                                    <option value="">— выберите семестр —</option>
+                                    <?php foreach ($adminAllSemesters as $sm): ?>
+                                        <option value="<?= (int) $sm['id'] ?>"
+                                                data-year="<?= (int) $sm['academic_year_id'] ?>"
+                                                <?= (int) $sm['id'] === (int) $defaultSubjectSemesterId ? 'selected' : '' ?>>
+                                            <?= e($sm['name']) ?> · <?= e($sm['year_name']) ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
@@ -763,30 +604,34 @@ $typesMeta = project_types_meta();
                 <script>
                 (function () {
                     'use strict';
-                    // В формах предмета список групп ограничивается годом выбранного семестра:
-                    // группа должна принадлежать тому же учебному году, что и семестр предмета.
                     document.querySelectorAll('.pzk-subject-form').forEach(function (form) {
-                        var semesterSel = form.querySelector('select[name="semester_id"]');
-                        var groupSel    = form.querySelector('select[name="group_id"]');
-                        if (!semesterSel || !groupSel) return;
+                        var yearSel  = form.querySelector('select[name="academic_year_id"]');
+                        var groupSel = form.querySelector('select[name="group_id"]');
+                        var semSel   = form.querySelector('select[name="semester_id"]');
+                        if (!yearSel) return;
 
-                        function syncGroups() {
-                            var opt = semesterSel.options[semesterSel.selectedIndex];
-                            var year = opt ? opt.getAttribute('data-year') : null;
-                            var current = groupSel.value;
+                        function filterByYear(sel) {
+                            if (!sel) return;
+                            var year = yearSel.value;
+                            var current = sel.value;
                             var stillValid = false;
-                            groupSel.querySelectorAll('option').forEach(function (o) {
-                                if (o.value === '') return;                // служебная «— выберите группу —»
-                                var ok = year === null || o.getAttribute('data-year') === year;
-                                o.hidden = !ok;
-                                o.disabled = !ok;
-                                if (ok && o.value === current) stillValid = true;
+                            sel.querySelectorAll('option').forEach(function (opt) {
+                                if (opt.value === '') return;
+                                var ok = opt.getAttribute('data-year') === year;
+                                opt.hidden = !ok;
+                                opt.disabled = !ok;
+                                if (ok && opt.value === current) stillValid = true;
                             });
-                            groupSel.value = stillValid ? current : '';
+                            if (!stillValid) sel.value = '';
                         }
 
-                        semesterSel.addEventListener('change', syncGroups);
-                        syncGroups();
+                        function syncAll() {
+                            filterByYear(groupSel);
+                            filterByYear(semSel);
+                        }
+
+                        yearSel.addEventListener('change', syncAll);
+                        syncAll();
                     });
                 })();
                 </script>
@@ -825,7 +670,9 @@ $typesMeta = project_types_meta();
                             </h3>
                             <span style="font-size:0.82rem; color:var(--color-tertiary);">
                                 <?= e($subj['group_name']) ?>
-                                · <?= e(semester_label($subj['semester_name'], $subj['semester_is_practice'])) ?>
+                                <?php if ($subj['semester_name'] !== ''): ?>
+                                    · <?= e($subj['semester_name']) ?>
+                                <?php endif; ?>
                                 · <?= (int) $subj['hours'] ?> ч.
                             </span>
                         </div>
@@ -922,7 +769,7 @@ $typesMeta = project_types_meta();
                                     </p>
                                 </div>
                                 <label class="pzk-field">
-                                    <span class="pzk-field__label">Темы (<?= e($subj['short_name']) ?> · <?= e(semester_label($subj['semester_name'], $subj['semester_is_practice'])) ?>)</span>
+                                    <span class="pzk-field__label">Темы (<?= e($subj['short_name']) ?><?= $subj['semester_name'] !== '' ? ' · ' . e($subj['semester_name']) : '' ?>)</span>
                                     <textarea class="pzk-field__textarea" name="topics" rows="12" required
                                               placeholder="Введение в предмет&#10;Основные понятия и определения&#10;..."></textarea>
                                 </label>
@@ -938,122 +785,157 @@ $typesMeta = project_types_meta();
 
     <?php elseif ($section === 'schedule'): ?>
         <?php
-            $scheduleDays   = schedule_days();
-            $scheduleTimes  = schedule_lesson_times();
-            $scheduleTypes  = schedule_lesson_types();
-            $scheduleGrid   = schedule_grid($adminScheduleEntries);
+            $scheduleDays  = schedule_days();
+            $scheduleTimes = schedule_lesson_times();
+            $scheduleTypes = schedule_lesson_types();
+
+            // Группируем записи расписания для рендера: [lesson_num][weekday] => []
+            $scheduleGrid = [];
+            foreach ($adminScheduleEntries as $row) {
+                $scheduleGrid[(int) $row['lesson_num']][(int) $row['weekday']][] = $row;
+            }
         ?>
         <section class="panel">
             <div class="panel__head">
                 <div>
                     <h2 class="panel__title">Расписание</h2>
                     <p class="panel__subtitle">
+                        <?php if ($adminScheduleSemesterId > 0): ?>
+                            Семестр: <strong><?= e($adminScheduleSemesterName) ?></strong>.
+                        <?php endif; ?>
                         Неделя с <?= e($scheduleDays[1]) ?> по <?= e($scheduleDays[6]) ?>, 9 уроков.
-                        В каждой ячейке — предмет и тип занятия.
+                        В ячейке — предмет (с указанием группы) и тип занятия.
+                        Расписание одно на семестр, для всех групп.
                     </p>
                 </div>
-                <?php if ($adminScheduleGroup !== null && $adminScheduleSubjects !== []): ?>
+                <?php if ($adminScheduleSemesterId > 0 && $adminScheduleEntries !== []): ?>
                     <form method="post" action="index.php?action=admin_schedule_clear" style="display:inline;"
-                          onsubmit="return confirm('Очистить ВСЁ расписание группы «<?= e($adminScheduleGroup['name']) ?>»?');">
+                          onsubmit="return confirm('Очистить всё расписание семестра «<?= e($adminScheduleSemesterName) ?>» (все группы)?');">
                         <?= csrf_field() ?>
-                        <input type="hidden" name="group_id" value="<?= (int) $adminScheduleGroup['id'] ?>">
+                        <input type="hidden" name="semester_id" value="<?= (int) $adminScheduleSemesterId ?>">
+                        <input type="hidden" name="schedule_year" value="<?= (int) $adminScheduleYearId ?>">
                         <button type="submit" class="pzk-btn pzk-btn--sm">Очистить</button>
                     </form>
                 <?php endif; ?>
             </div>
 
-            <?php if ($adminAllGroups === []): ?>
+            <?php if ($adminAcademicYears === []): ?>
                 <div class="uni-empty">
-                    Сначала создайте хотя бы одну группу — в разделе «Группы».
+                    Сначала создайте учебный год — в разделе «Учебный год».
                 </div>
-            <?php elseif ($adminScheduleGroup === null): ?>
-                <div class="uni-empty">Группа не найдена.</div>
-            <?php elseif ($adminScheduleSubjects === []): ?>
+            <?php elseif ($adminScheduleSemesters === []): ?>
                 <div class="uni-empty">
-                    У группы «<?= e($adminScheduleGroup['name']) ?>» нет предметов.
-                    <a href="?page=admin&amp;section=subjects">Добавьте предметы</a> — после этого здесь можно будет составить расписание.
+                    В выбранном учебном году нет семестров. Добавьте их в разделе «Учебный год».
                 </div>
             <?php else: ?>
-                <form method="get" action="index.php" class="pzk-inline-form" autocomplete="off"
+                <form method="get" action="index.php" class="pzk-inline-form pzk-schedule-filter" autocomplete="off"
                       style="margin-bottom: var(--space-md);">
                     <input type="hidden" name="page" value="admin">
                     <input type="hidden" name="section" value="schedule">
-                    <label>Группа:
-                        <select name="schedule_group" class="pzk-field__input" onchange="this.form.submit();">
-                            <?php foreach ($adminAllGroups as $g): ?>
-                                <option value="<?= (int) $g['id'] ?>"
-                                        <?= (int) $g['id'] === $adminScheduleGroupId ? 'selected' : '' ?>>
-                                    <?= e($g['name']) ?> · <?= e($g['year_name']) ?>
+                    <label>Учебный год:
+                        <select name="schedule_year" class="pzk-field__input">
+                            <?php foreach ($adminAcademicYears as $ay): ?>
+                                <option value="<?= (int) $ay['id'] ?>"
+                                        <?= (int) $ay['id'] === (int) $adminScheduleYearId ? 'selected' : '' ?>>
+                                    <?= e($ay['name']) ?><?= (int) $ay['is_current'] === 1 ? ' (текущий)' : '' ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label>Семестр:
+                        <select name="schedule_semester" class="pzk-field__input">
+                            <?php foreach ($adminScheduleSemesters as $sm): ?>
+                                <option value="<?= (int) $sm['id'] ?>"
+                                        <?= (int) $sm['id'] === (int) $adminScheduleSemesterId ? 'selected' : '' ?>>
+                                    <?= e($sm['name']) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
                     </label>
                 </form>
 
-                <form method="post" action="index.php?action=admin_schedule_save" autocomplete="off">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="group_id" value="<?= (int) $adminScheduleGroup['id'] ?>">
+                <script>
+                (function () {
+                    'use strict';
+                    document.querySelectorAll('.pzk-schedule-filter select').forEach(function (sel) {
+                        sel.addEventListener('change', function () {
+                            sel.closest('form').submit();
+                        });
+                    });
+                })();
+                </script>
 
-                    <div class="pzk-table-wrap">
-                        <table class="pzk-table pzk-schedule-table">
-                            <thead>
-                                <tr>
-                                    <th style="width:50px;">№</th>
-                                    <th style="width:130px;">Продолжительность</th>
-                                    <?php foreach ($scheduleDays as $dayNum => $dayLabel): ?>
-                                        <th><?= e($dayLabel) ?></th>
-                                    <?php endforeach; ?>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($scheduleTimes as $lessonNum => $time): ?>
+                <?php if ($adminScheduleSubjects === []): ?>
+                    <div class="uni-empty">
+                        В семестре «<?= e($adminScheduleSemesterName) ?>» нет ни одного предмета.
+                        <a href="?page=admin&amp;section=subjects">Добавьте предметы</a>, потом вернитесь сюда.
+                    </div>
+                <?php else: ?>
+                    <form method="post" action="index.php?action=admin_schedule_save" autocomplete="off">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="semester_id" value="<?= (int) $adminScheduleSemesterId ?>">
+                        <input type="hidden" name="schedule_year" value="<?= (int) $adminScheduleYearId ?>">
+
+                        <div class="pzk-table-wrap">
+                            <table class="pzk-table pzk-schedule-table">
+                                <thead>
                                     <tr>
-                                        <td><strong><?= (int) $lessonNum ?></strong></td>
-                                        <td style="font-size:0.85rem; color:var(--color-secondary); white-space:nowrap;"><?= e($time) ?></td>
+                                        <th style="width:50px;">№</th>
+                                        <th style="width:130px;">Продолжительность</th>
                                         <?php foreach ($scheduleDays as $dayNum => $dayLabel): ?>
-                                            <td class="pzk-schedule-cell">
-                                                <?php
-                                                    $cells = $scheduleGrid[$lessonNum][$dayNum] ?? [];
-                                                    $cellCount = count($cells);
-                                                ?>
-                                                <?php for ($pos = 1; $pos <= max($cellCount, 1); $pos++): ?>
-                                                    <?php $cell = $cells[$pos - 1] ?? null; ?>
-                                                    <?php if ($pos > 1): ?><hr class="pzk-schedule-sep"><?php endif; ?>
-                                                    <div class="pzk-schedule-entry">
-                                                        <select class="pzk-field__input pzk-field__input--sm"
-                                                                name="cell[<?= (int) $dayNum ?>][<?= (int) $lessonNum ?>][<?= (int) $pos ?>][subject_id]">
-                                                            <option value="">— не задано —</option>
-                                                            <?php foreach ($adminScheduleSubjects as $subj): ?>
-                                                                <option value="<?= (int) $subj['id'] ?>"
-                                                                        <?= ($cell && (int) $cell['subject_id'] === (int) $subj['id']) ? 'selected' : '' ?>>
-                                                                    <?= e($subj['short_name']) ?>
-                                                                    · <?= e(semester_label($subj['semester_name'], $subj['semester_is_practice'])) ?>
-                                                                </option>
-                                                            <?php endforeach; ?>
-                                                        </select>
-                                                        <select class="pzk-field__input pzk-field__input--sm"
-                                                                name="cell[<?= (int) $dayNum ?>][<?= (int) $lessonNum ?>][<?= (int) $pos ?>][lesson_type]">
-                                                            <?php foreach ($scheduleTypes as $typeCode => $typeLabel): ?>
-                                                                <option value="<?= e($typeCode) ?>"
-                                                                        <?= ($cell && $cell['lesson_type'] === $typeCode) ? 'selected' : '' ?>>
-                                                                    <?= e($typeLabel) ?>
-                                                                </option>
-                                                            <?php endforeach; ?>
-                                                        </select>
-                                                    </div>
-                                                <?php endfor; ?>
-                                            </td>
+                                            <th><?= e($dayLabel) ?></th>
                                         <?php endforeach; ?>
                                     </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($scheduleTimes as $lessonNum => $time): ?>
+                                        <tr>
+                                            <td><strong><?= (int) $lessonNum ?></strong></td>
+                                            <td style="font-size:0.85rem; color:var(--color-secondary); white-space:nowrap;"><?= e($time) ?></td>
+                                            <?php foreach ($scheduleDays as $dayNum => $dayLabel): ?>
+                                                <td class="pzk-schedule-cell">
+                                                    <?php
+                                                        $cells = $scheduleGrid[$lessonNum][$dayNum] ?? [];
+                                                        $cellCount = count($cells);
+                                                    ?>
+                                                    <?php for ($pos = 1; $pos <= max($cellCount + 1, 2); $pos++): ?>
+                                                        <?php $cell = $cells[$pos - 1] ?? null; ?>
+                                                        <?php if ($pos > 1): ?><hr class="pzk-schedule-sep"><?php endif; ?>
+                                                        <div class="pzk-schedule-entry">
+                                                            <select class="pzk-field__input pzk-field__input--sm"
+                                                                    name="cell[<?= (int) $dayNum ?>][<?= (int) $lessonNum ?>][<?= (int) $pos ?>][subject_id]">
+                                                                <option value="">— не задано —</option>
+                                                                <?php foreach ($adminScheduleSubjects as $subj): ?>
+                                                                    <option value="<?= (int) $subj['id'] ?>"
+                                                                            <?= ($cell && (int) $cell['subject_id'] === (int) $subj['id']) ? 'selected' : '' ?>>
+                                                                        <?= e($subj['short_name']) ?> · <?= e($subj['group_name']) ?>
+                                                                    </option>
+                                                                <?php endforeach; ?>
+                                                            </select>
+                                                            <select class="pzk-field__input pzk-field__input--sm"
+                                                                    name="cell[<?= (int) $dayNum ?>][<?= (int) $lessonNum ?>][<?= (int) $pos ?>][lesson_type]">
+                                                                <?php foreach ($scheduleTypes as $typeCode => $typeLabel): ?>
+                                                                    <option value="<?= e($typeCode) ?>"
+                                                                            <?= ($cell && $cell['lesson_type'] === $typeCode) ? 'selected' : '' ?>>
+                                                                        <?= e($typeLabel) ?>
+                                                                    </option>
+                                                                <?php endforeach; ?>
+                                                            </select>
+                                                        </div>
+                                                    <?php endfor; ?>
+                                                </td>
+                                            <?php endforeach; ?>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
 
-                    <div class="pzk-form__actions" style="margin-top: var(--space-md);">
-                        <button type="submit" class="pzk-btn pzk-btn--primary">Сохранить расписание</button>
-                    </div>
-                </form>
+                        <div class="pzk-form__actions" style="margin-top: var(--space-md);">
+                            <button type="submit" class="pzk-btn pzk-btn--primary">Сохранить расписание</button>
+                        </div>
+                    </form>
+                <?php endif; ?>
             <?php endif; ?>
         </section>
 

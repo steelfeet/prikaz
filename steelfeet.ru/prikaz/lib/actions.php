@@ -5,9 +5,7 @@ declare(strict_types=1);
  * POST-обработчики Приказа.
  * Ожидает $currentUser и $action из index.php.
  *
- * ВАЖНО: файл не должен заканчиваться на ?>. 
- * Никакого HTML внутри нет, поэтому закрывающий тег не нужен и опасен 
- * (пробел после ?> попадёт в вывод и сломает redirect).
+ * ВАЖНО: файл не должен заканчиваться на ?>.
  */
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
@@ -106,7 +104,7 @@ if ($action === 'project_move_phase') {
     redirect('index.php?page=teacher&tab=projects');
 }
 
-// ===== УЧЕБНЫЙ ГОД: сохранение (создание / редактирование) =====
+// ===== УЧЕБНЫЙ ГОД: сохранение =====
 if ($action === 'admin_academic_year_save') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
 
@@ -153,7 +151,6 @@ if ($action === 'admin_academic_year_save') {
             $newId = (int) $pdo->lastInsertId();
             audit_log((int) $currentUser['id'], 'academic_year_create', 'academic_year', $newId);
 
-            // Базовые семестры нового года: админ может переименовать их или удалить.
             $semStmt = $pdo->prepare(
                 'INSERT INTO semesters (academic_year_id, name, is_practice, ord)
                  VALUES (:y, :n, 0, :o)'
@@ -211,7 +208,7 @@ if ($action === 'admin_academic_year_set_current') {
     redirect('index.php?page=admin&section=academic_years');
 }
 
-// ===== ГРУППА: сохранение (создание / редактирование) =====
+// ===== ГРУППА: сохранение =====
 if ($action === 'admin_group_save') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
 
@@ -290,7 +287,7 @@ if ($action === 'admin_group_delete') {
     redirect('index.php?page=admin&section=groups');
 }
 
-// ===== СЕМЕСТР: сохранение (создание / редактирование) =====
+// ===== СЕМЕСТР: сохранение =====
 if ($action === 'admin_semester_save') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
 
@@ -378,7 +375,7 @@ if ($action === 'admin_semester_delete') {
     redirect('index.php?page=admin&section=academic_years');
 }
 
-// ===== ПРЕДМЕТ: сохранение (создание / редактирование) =====
+// ===== ПРЕДМЕТ: сохранение =====
 if ($action === 'admin_subject_save') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
 
@@ -389,7 +386,6 @@ if ($action === 'admin_subject_save') {
     $fullName    = trim((string) ($_POST['full_name'] ?? ''));
     $hoursRaw    = trim((string) ($_POST['hours'] ?? ''));
 
-    // Возврат в тот же год, к которому относится выбранный семестр.
     $backYearId = 0;
     if ($semesterId > 0) {
         $stmt = $pdo->prepare('SELECT academic_year_id FROM semesters WHERE id = :id');
@@ -420,7 +416,6 @@ if ($action === 'admin_subject_save') {
         $hours = (int) $hoursRaw;
     }
 
-    // Семестр определяет учебный год предмета.
     $stmt = $pdo->prepare(
         'SELECT sm.id, sm.name AS semester_name, sm.academic_year_id, ay.name AS year_name
          FROM semesters sm
@@ -580,7 +575,7 @@ if ($action === 'admin_curriculum_delete') {
     redirect('index.php?page=admin&section=curriculum');
 }
 
-// ===== УЧЕБНЫЙ ПЛАН: массовое добавление тем (одна строка — одна тема) =====
+// ===== УЧЕБНЫЙ ПЛАН: массовое добавление тем =====
 if ($action === 'admin_curriculum_bulk_add') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
 
@@ -600,9 +595,6 @@ if ($action === 'admin_curriculum_bulk_add') {
         redirect($backUrl);
     }
 
-    // Разбор текста: одна строка — одна тема. Функция чинит кодировку,
-    // режет все виды переносов строк и отбрасывает невидимые символы,
-    // поэтому ни одна реальная тема не теряется молча.
     $parsed = parse_topic_lines($rawTopics);
 
     if ($parsed['invalid'] > 0) {
@@ -611,7 +603,6 @@ if ($action === 'admin_curriculum_bulk_add') {
         redirect($backUrl);
     }
 
-    // Уже существующие темы предмета — их не добавляем повторно.
     $stmt = $pdo->prepare('SELECT topic FROM curriculum WHERE subject_id = :s');
     $stmt->execute([':s' => $subjectId]);
     $existingKeys = [];
@@ -628,9 +619,9 @@ if ($action === 'admin_curriculum_bulk_add') {
     foreach ($parsed['topics'] as $topic) {
         $key = topic_key($topic);
         if ($key === '') { $emptyLines++; continue; }
-        if (isset($seenKeys[$key])) { $dupBatch++; continue; }    // дубль внутри списка
+        if (isset($seenKeys[$key])) { $dupBatch++; continue; }
         $seenKeys[$key] = true;
-        if (isset($existingKeys[$key])) { $dupExist++; continue; } // такая тема уже есть
+        if (isset($existingKeys[$key])) { $dupExist++; continue; }
         $toAdd[] = $topic;
     }
 
@@ -647,7 +638,6 @@ if ($action === 'admin_curriculum_bulk_add') {
         redirect($backUrl);
     }
 
-    // Продолжаем нумерацию от последней темы этого предмета.
     $stmt = $pdo->prepare('SELECT COALESCE(MAX(ord), 0) FROM curriculum WHERE subject_id = :s');
     $stmt->execute([':s' => $subjectId]);
     $ord = (int) $stmt->fetchColumn();
@@ -674,6 +664,162 @@ if ($action === 'admin_curriculum_bulk_add') {
         flash_set('success', $message);
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect($backUrl);
+}
+
+// ===== РАСПИСАНИЕ: сохранение (перезапись семестра) =====
+if ($action === 'admin_schedule_save') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $semesterId = (int) ($_POST['semester_id'] ?? 0);
+    $yearId     = (int) ($_POST['schedule_year'] ?? 0);
+
+    $backUrl = 'index.php?page=admin&section=schedule';
+    if ($yearId > 0)     $backUrl .= '&schedule_year=' . $yearId;
+    if ($semesterId > 0) $backUrl .= '&schedule_semester=' . $semesterId;
+
+    if ($semesterId <= 0) {
+        flash_set('danger', 'Не выбран семестр.');
+        redirect('index.php?page=admin&section=schedule');
+    }
+
+    // Все предметы семестра: id => [group_id, short_name, group_name]
+    $stmt = $pdo->prepare(
+        'SELECT s.id, s.short_name, s.group_id, g.name AS group_name
+         FROM subjects s JOIN groups g ON g.id = s.group_id
+         WHERE s.semester_id = :sm'
+    );
+    $stmt->execute([':sm' => $semesterId]);
+    $subjectsInSemester = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $subjectsInSemester[(int) $row['id']] = [
+            'group_id'   => (int) $row['group_id'],
+            'short_name' => (string) $row['short_name'],
+            'group_name' => (string) $row['group_name'],
+        ];
+    }
+    if ($subjectsInSemester === []) {
+        flash_set('danger', 'В этом семестре нет предметов — расписание сохранять некуда.');
+        redirect($backUrl);
+    }
+
+    $rawCells = $_POST['cell'] ?? [];
+    if (!is_array($rawCells)) $rawCells = [];
+
+    $validTypes = schedule_lesson_types();
+    $maxPerCell = schedule_max_per_cell();
+
+    $toInsert   = [];
+    $duplicates = 0;
+    $invalid    = 0;
+    $slotPosition = [];   // "group:weekday:lesson" => номер следующей позиции
+
+    for ($weekday = 1; $weekday <= 6; $weekday++) {
+        if (!isset($rawCells[$weekday]) || !is_array($rawCells[$weekday])) continue;
+        for ($lesson = 1; $lesson <= 9; $lesson++) {
+            if (!isset($rawCells[$weekday][$lesson]) || !is_array($rawCells[$weekday][$lesson])) continue;
+
+            foreach ($rawCells[$weekday][$lesson] as $cellData) {
+                if (!is_array($cellData)) continue;
+                $subjectId  = (int) ($cellData['subject_id'] ?? 0);
+                $lessonType = trim((string) ($cellData['lesson_type'] ?? ''));
+
+                if ($subjectId <= 0 && $lessonType === '') continue;
+                if ($subjectId <= 0) { $invalid++; continue; }
+                if (!isset($subjectsInSemester[$subjectId])) { $invalid++; continue; }
+                if (!isset($validTypes[$lessonType])) { $invalid++; continue; }
+
+                $groupId = $subjectsInSemester[$subjectId]['group_id'];
+                $slotKey = $groupId . ':' . $weekday . ':' . $lesson;
+
+                $pos = ($slotPosition[$slotKey] ?? 0) + 1;
+                if ($pos > $maxPerCell) { $duplicates++; continue; }
+                $slotPosition[$slotKey] = $pos;
+
+                $toInsert[] = [
+                    'group_id'    => $groupId,
+                    'weekday'     => $weekday,
+                    'lesson_num'  => $lesson,
+                    'position'    => $pos,
+                    'subject_id'  => $subjectId,
+                    'lesson_type' => $lessonType,
+                ];
+            }
+        }
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        // Удаляем всё расписание этого семестра (по всем группам сразу).
+        // Записи других семестров не затрагиваются — у них другие subject_id.
+        $pdo->prepare(
+            'DELETE FROM schedule_entries
+             WHERE subject_id IN (SELECT id FROM subjects WHERE semester_id = :sm)'
+        )->execute([':sm' => $semesterId]);
+
+        if ($toInsert !== []) {
+            $ins = $pdo->prepare(
+                'INSERT INTO schedule_entries (group_id, weekday, lesson_num, position, subject_id, lesson_type)
+                 VALUES (:g, :wd, :ln, :pos, :si, :lt)'
+            );
+            foreach ($toInsert as $row) {
+                $ins->execute([
+                    ':g'   => $row['group_id'],
+                    ':wd'  => $row['weekday'],
+                    ':ln'  => $row['lesson_num'],
+                    ':pos' => $row['position'],
+                    ':si'  => $row['subject_id'],
+                    ':lt'  => $row['lesson_type'],
+                ]);
+            }
+        }
+
+        $pdo->commit();
+        audit_log((int) $currentUser['id'], 'schedule_save', 'semester', $semesterId,
+            'entries=' . count($toInsert) . ' dupes=' . $duplicates . ' invalid=' . $invalid);
+
+        $msg = 'Расписание семестра сохранено (' . count($toInsert) . ' записей).';
+        if ($duplicates > 0) $msg .= ' Пропущено дубликатов: ' . $duplicates . '.';
+        if ($invalid    > 0) $msg .= ' Пропущено записей с неверным предметом: ' . $invalid . '.';
+        flash_set('success', $msg);
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect($backUrl);
+}
+
+// ===== РАСПИСАНИЕ: очистка семестра =====
+if ($action === 'admin_schedule_clear') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $semesterId = (int) ($_POST['semester_id'] ?? 0);
+    $yearId     = (int) ($_POST['schedule_year'] ?? 0);
+
+    $backUrl = 'index.php?page=admin&section=schedule';
+    if ($yearId > 0)     $backUrl .= '&schedule_year=' . $yearId;
+    if ($semesterId > 0) $backUrl .= '&schedule_semester=' . $semesterId;
+
+    if ($semesterId <= 0) {
+        flash_set('danger', 'Семестр не выбран.');
+        redirect('index.php?page=admin&section=schedule');
+    }
+
+    try {
+        $stmt = $pdo->prepare('SELECT name FROM semesters WHERE id = :id');
+        $stmt->execute([':id' => $semesterId]);
+        $name = (string) $stmt->fetchColumn();
+
+        $pdo->prepare(
+            'DELETE FROM schedule_entries
+             WHERE subject_id IN (SELECT id FROM subjects WHERE semester_id = :sm)'
+        )->execute([':sm' => $semesterId]);
+        audit_log((int) $currentUser['id'], 'schedule_clear', 'semester', $semesterId);
+        flash_set('success', 'Расписание семестра «' . $name . '» очищено.');
+    } catch (Throwable $e) {
         flash_set('danger', 'Ошибка: ' . $e->getMessage());
     }
     redirect($backUrl);
@@ -745,152 +891,7 @@ if ($action === 'admin_user_create') {
     redirect('index.php?page=admin&section=users');
 }
 
-// ===== РАСПИСАНИЕ: сохранение (перезапись) =====
-if ($action === 'admin_schedule_save') {
-    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
-
-    $groupId   = (int) ($_POST['group_id'] ?? 0);
-    $backUrl   = 'index.php?page=admin&section=schedule' . ($groupId > 0 ? '&schedule_group=' . $groupId : '');
-
-    if ($groupId <= 0) {
-        flash_set('danger', 'Выберите группу.');
-        redirect($backUrl);
-    }
-
-    // Проверим, что группа существует.
-    $stmt = $pdo->prepare('SELECT id, name, academic_year_id FROM groups WHERE id = :id');
-    $stmt->execute([':id' => $groupId]);
-    $group = $stmt->fetch();
-    if (!$group) {
-        flash_set('danger', 'Группа не найдена.');
-        redirect($backUrl);
-    }
-
-    // Парсим ячейки из формы.
-    $rawCells = $_POST['cell'] ?? [];
-    if (!is_array($rawCells)) {
-        flash_set('danger', 'Нет данных.');
-        redirect($backUrl);
-    }
-
-    // Множество допустимых предметов группы — чтобы не гонять запрос на каждую ячейку.
-    $stmt = $pdo->prepare('SELECT id FROM subjects WHERE group_id = :g');
-    $stmt->execute([':g' => $groupId]);
-    $allowedSubjectIds = [];
-    foreach ($stmt->fetchAll() as $row) {
-        $allowedSubjectIds[(int) $row['id']] = true;
-    }
-
-    $toInsert       = [];
-    $duplicates     = 0;
-    $invalidSubject = 0;
-    $seen           = [];
-    $validTypes     = schedule_lesson_types();
-    $maxPerCell     = schedule_max_per_cell();
-
-    for ($weekday = 1; $weekday <= 6; $weekday++) {
-        if (!isset($rawCells[$weekday]) || !is_array($rawCells[$weekday])) continue;
-        for ($lesson = 1; $lesson <= 9; $lesson++) {
-            if (!isset($rawCells[$weekday][$lesson]) || !is_array($rawCells[$weekday][$lesson])) continue;
-
-            $position = 0;
-            foreach ($rawCells[$weekday][$lesson] as $cellData) {
-                if (!is_array($cellData)) continue;
-                $subjectId  = (int) ($cellData['subject_id'] ?? 0);
-                $lessonType = trim((string) ($cellData['lesson_type'] ?? ''));
-
-                // Пустая строка формы — просто не занятие.
-                if ($subjectId <= 0 && $lessonType === '') continue;
-                if ($subjectId <= 0) { $invalidSubject++; continue; }
-                if (!isset($validTypes[$lessonType])) { $invalidSubject++; continue; }
-
-                // Предмет должен принадлежать этой группе.
-                if (!isset($allowedSubjectIds[$subjectId])) { $invalidSubject++; continue; }
-
-                // Один и тот же предмет+тип в одной ячейке — дубль.
-                $dupKey = $weekday . ':' . $lesson . ':' . $subjectId . ':' . $lessonType;
-                if (isset($seen[$dupKey])) { $duplicates++; continue; }
-                $seen[$dupKey] = true;
-
-                if ($position >= $maxPerCell) { $duplicates++; continue; }
-                $position++;
-
-                $toInsert[] = [
-                    'group_id'    => $groupId,
-                    'weekday'     => $weekday,
-                    'lesson_num'  => $lesson,
-                    'position'    => $position,
-                    'subject_id'  => $subjectId,
-                    'lesson_type' => $lessonType,
-                ];
-            }
-        }
-    }
-
-    try {
-        $pdo->beginTransaction();
-        // Удаляем старые записи группы.
-        $pdo->prepare('DELETE FROM schedule_entries WHERE group_id = :g')
-            ->execute([':g' => $groupId]);
-
-        if ($toInsert !== []) {
-            $ins = $pdo->prepare(
-                'INSERT INTO schedule_entries (group_id, weekday, lesson_num, position, subject_id, lesson_type)
-                 VALUES (:g, :wd, :ln, :pos, :si, :lt)'
-            );
-            foreach ($toInsert as $row) {
-                $ins->execute([
-                    ':g' => $row['group_id'],
-                    ':wd' => $row['weekday'],
-                    ':ln' => $row['lesson_num'],
-                    ':pos' => $row['position'],
-                    ':si' => $row['subject_id'],
-                    ':lt' => $row['lesson_type'],
-                ]);
-            }
-        }
-
-        $pdo->commit();
-        audit_log((int) $currentUser['id'], 'schedule_save', 'group', $groupId,
-            'entries=' . count($toInsert) . ' dupes=' . $duplicates . ' invalid=' . $invalidSubject);
-
-        $msg = 'Расписание группы «' . $group['name'] . '» сохранено (' . count($toInsert) . ' записей).';
-        if ($duplicates > 0) $msg .= ' Пропущено дубликатов: ' . $duplicates . '.';
-        if ($invalidSubject > 0) $msg .= ' Пропущено записей с неверным предметом: ' . $invalidSubject . '.';
-        flash_set('success', $msg);
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        flash_set('danger', 'Ошибка: ' . $e->getMessage());
-    }
-    redirect($backUrl);
-}
-
-// ===== РАСПИСАНИЕ: очистка группы =====
-if ($action === 'admin_schedule_clear') {
-    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
-    $groupId = (int) ($_POST['group_id'] ?? 0);
-    $backUrl = 'index.php?page=admin&section=schedule' . ($groupId > 0 ? '&schedule_group=' . $groupId : '');
-
-    if ($groupId <= 0) {
-        flash_set('danger', 'Выберите группу.');
-        redirect($backUrl);
-    }
-
-    try {
-        $stmt = $pdo->prepare('SELECT name FROM groups WHERE id = :id');
-        $stmt->execute([':id' => $groupId]);
-        $name = (string) $stmt->fetchColumn();
-
-        $pdo->prepare('DELETE FROM schedule_entries WHERE group_id = :g')->execute([':g' => $groupId]);
-        audit_log((int) $currentUser['id'], 'schedule_clear', 'group', $groupId);
-        flash_set('success', 'Расписание группы «' . $name . '» очищено.');
-    } catch (Throwable $e) {
-        flash_set('danger', 'Ошибка: ' . $e->getMessage());
-    }
-    redirect($backUrl);
-}
-
-// ===== ПОЛЬЗОВАТЕЛЬ: блокировка / разблокировка =====
+// ===== ПОЛЬЗОВАТЕЛЬ: блокировка =====
 if ($action === 'admin_user_toggle') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
     $userId = (int) ($_POST['user_id'] ?? 0);
@@ -925,7 +926,7 @@ if ($action === 'admin_user_reset_password') {
     redirect('index.php?page=admin&section=users');
 }
 
-// ===== РОДИТЕЛЬ: привязка к студенту =====
+// ===== РОДИТЕЛЬ: привязка =====
 if ($action === 'admin_parent_link') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
     $parentId  = (int) ($_POST['parent_id'] ?? 0);

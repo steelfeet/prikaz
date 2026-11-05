@@ -175,10 +175,14 @@ $defaultSubjectGroupId = 0;
 $defaultSubjectSemesterId = 0;
 $adminCurrentYearSubjectCount = 0;
 $adminCurriculum = [];
-$adminScheduleGroupId = 0;
-$adminScheduleEntries = [];
+
+// Расписание: год + семестр, все группы
+$adminScheduleYearId = 0;
+$adminScheduleSemesters = [];
+$adminScheduleSemesterId = 0;
+$adminScheduleSemesterName = '';
 $adminScheduleSubjects = [];
-$adminScheduleGroup = null;
+$adminScheduleEntries = [];
 
 if ($viewRole === 'admin') {
     $adminUsers = $pdo->query(
@@ -214,8 +218,6 @@ if ($viewRole === 'admin') {
     }
 
     // ===== Группы =====
-    // По умолчанию (без group_year в URL) — текущий учебный год.
-    // Явное group_year=0 — «Все».
     if (isset($_GET['group_year'])) {
         $adminGroupsFilterYear = (int) $_GET['group_year'];
     } elseif ($adminCurrentYear !== null) {
@@ -242,10 +244,6 @@ if ($viewRole === 'admin') {
     $stmt->execute($params);
     $adminGroups = $stmt->fetchAll();
 
-    // Значение по умолчанию для селекта «Учебный год» в форме создания:
-    //   — если включён фильтр, то отфильтрованный год;
-    //   — иначе текущий;
-    //   — иначе самый свежий из существующих.
     if ($adminGroupsFilterYear > 0) {
         $defaultGroupYearId = $adminGroupsFilterYear;
     } elseif ($adminCurrentYear !== null) {
@@ -263,8 +261,6 @@ if ($viewRole === 'admin') {
     )->fetchAll();
 
     // ===== Предметы =====
-    // Год берётся через семестр: предмет относится к семестру, а не к году напрямую.
-    // subject_year=0 — «все годы», subject_semester=0 — «все семестры».
     if (isset($_GET['subject_year'])) {
         $adminSubjectsFilterYear = (int) $_GET['subject_year'];
     } elseif ($adminCurrentYear !== null) {
@@ -274,7 +270,7 @@ if ($viewRole === 'admin') {
     } else {
         $adminSubjectsFilterYear = 0;
     }
-    $adminSubjectsFilterGroup   = isset($_GET['subject_group'])   ? (int) $_GET['subject_group']   : 0;
+    $adminSubjectsFilterGroup    = isset($_GET['subject_group'])    ? (int) $_GET['subject_group']    : 0;
     $adminSubjectsFilterSemester = isset($_GET['subject_semester']) ? (int) $_GET['subject_semester'] : 0;
 
     $sql = 'SELECT s.*,
@@ -285,7 +281,7 @@ if ($viewRole === 'admin') {
                    ay.is_current  AS year_is_current,
                    g.name         AS group_name
             FROM subjects s
-            JOIN semesters sm     ON sm.id = s.semester_id
+            JOIN semesters sm      ON sm.id = s.semester_id
             JOIN academic_years ay ON ay.id = sm.academic_year_id
             JOIN groups g          ON g.id = s.group_id';
     $params = [];
@@ -310,7 +306,6 @@ if ($viewRole === 'admin') {
     $stmt->execute($params);
     $adminSubjects = $stmt->fetchAll();
 
-    // Все группы (с названием года) — для селектов «Группа» в фильтрах и формах.
     $adminAllGroups = $pdo->query(
         'SELECT g.id, g.name, g.academic_year_id, ay.name AS year_name
          FROM groups g
@@ -318,7 +313,6 @@ if ($viewRole === 'admin') {
          ORDER BY ay.start_date DESC, g.name'
     )->fetchAll();
 
-    // Семестры выбранного года — для селекта и фильтра «Семестр».
     foreach ($adminAllSemesters as $sm) {
         if ($adminSubjectsFilterYear === 0 || (int) $sm['academic_year_id'] === $adminSubjectsFilterYear) {
             $adminSemesters[] = $sm;
@@ -341,7 +335,7 @@ if ($viewRole === 'admin') {
         $adminCurrentYearSubjectCount = (int) $stmt->fetchColumn();
     }
 
-    // ===== Учебный план: предметы года + их темы =====
+    // ===== Учебный план =====
     $adminCurriculum = [];
     if ($adminCurrentYear !== null) {
         $stmt = $pdo->prepare(
@@ -368,68 +362,74 @@ if ($viewRole === 'admin') {
         $adminCurriculum = $subjectsRows;
     }
 
-    // ===== Расписание =====
-    // Выбор группы: из URL или первая группа текущего года (или любая).
-    $adminScheduleGroupId = isset($_GET['schedule_group']) ? (int) $_GET['schedule_group'] : 0;
-
-    $defaultScheduleGroupId = 0;
-    if ($adminScheduleGroupId > 0) {
-        $stmt = $pdo->prepare(
-            'SELECT g.id FROM groups g WHERE g.id = :g LIMIT 1'
-        );
-        $stmt->execute([':g' => $adminScheduleGroupId]);
-        if ((int) $stmt->fetchColumn() === 0) {
-            $adminScheduleGroupId = 0;
-        }
-    }
-    if ($adminScheduleGroupId === 0) {
-        // Первая группа текущего года, иначе первая вообще.
+    // ===== Расписание: год + семестр, все группы =====
+    // Один "поток" расписания на семестр. Группа не выбирается — она
+    // определяется через предмет (у subjects есть group_id).
+    $adminScheduleYearId = (int) ($_GET['schedule_year'] ?? 0);
+    if ($adminScheduleYearId <= 0) {
         if ($adminCurrentYear !== null) {
-            $stmt = $pdo->prepare(
-                'SELECT g.id FROM groups g WHERE g.academic_year_id = :y ORDER BY g.name LIMIT 1'
-            );
-            $stmt->execute([':y' => (int) $adminCurrentYear['id']]);
-            $defaultScheduleGroupId = (int) $stmt->fetchColumn();
+            $adminScheduleYearId = (int) $adminCurrentYear['id'];
+        } elseif ($adminAcademicYears !== []) {
+            $adminScheduleYearId = (int) $adminAcademicYears[0]['id'];
         }
-        if ($defaultScheduleGroupId === 0 && $adminAllGroups !== []) {
-            $defaultScheduleGroupId = (int) $adminAllGroups[0]['id'];
-        }
-        $adminScheduleGroupId = $defaultScheduleGroupId;
     }
 
-    if ($adminScheduleGroupId > 0) {
-        // Группа (для заголовка).
-        $stmt = $pdo->prepare(
-            'SELECT g.*, ay.name AS year_name
-             FROM groups g JOIN academic_years ay ON ay.id = g.academic_year_id
-             WHERE g.id = :g'
-        );
-        $stmt->execute([':g' => $adminScheduleGroupId]);
-        $adminScheduleGroup = $stmt->fetch() ?: null;
+    foreach ($adminAllSemesters as $sm) {
+        if ((int) $sm['academic_year_id'] === $adminScheduleYearId) {
+            $adminScheduleSemesters[] = $sm;
+        }
+    }
 
-        // Предметы группы (для селектов).
+    $adminScheduleSemesterId = (int) ($_GET['schedule_semester'] ?? 0);
+    $semValid = false;
+    foreach ($adminScheduleSemesters as $sm) {
+        if ((int) $sm['id'] === $adminScheduleSemesterId) { $semValid = true; break; }
+    }
+    if (!$semValid) {
+        $adminScheduleSemesterId = $adminScheduleSemesters !== []
+            ? (int) $adminScheduleSemesters[0]['id']
+            : 0;
+    }
+
+    foreach ($adminScheduleSemesters as $sm) {
+        if ((int) $sm['id'] === $adminScheduleSemesterId) {
+            $adminScheduleSemesterName = (string) $sm['name'];
+            break;
+        }
+    }
+
+    // Все предметы семестра (все группы) — единый список для селектов.
+    // group_name нужен, чтобы различать «Математика · 46» и «Математика · 36».
+    if ($adminScheduleSemesterId > 0) {
         $stmt = $pdo->prepare(
             'SELECT s.id, s.short_name, s.full_name,
-                    sm.name AS semester_name, sm.is_practice AS semester_is_practice
+                    sm.name AS semester_name, sm.is_practice AS semester_is_practice,
+                    g.id AS group_id, g.name AS group_name
              FROM subjects s
              JOIN semesters sm ON sm.id = s.semester_id
-             WHERE s.group_id = :g
-             ORDER BY sm.ord, sm.name, s.short_name'
+             JOIN groups g     ON g.id = s.group_id
+             WHERE s.semester_id = :sm
+             ORDER BY g.name, s.short_name'
         );
-        $stmt->execute([':g' => $adminScheduleGroupId]);
+        $stmt->execute([':sm' => $adminScheduleSemesterId]);
         $adminScheduleSubjects = $stmt->fetchAll();
+    }
 
-        // Записи расписания группы.
+    // Все записи расписания семестра — плоский список.
+    if ($adminScheduleSemesterId > 0) {
         $stmt = $pdo->prepare(
             'SELECT se.id, se.weekday, se.lesson_num, se.position,
                     se.subject_id, se.lesson_type,
-                    s.short_name AS subject_short_name
+                    s.short_name AS subject_short_name,
+                    s.group_id,
+                    g.name AS group_name
              FROM schedule_entries se
              JOIN subjects s ON s.id = se.subject_id
-             WHERE se.group_id = :g
+             JOIN groups g   ON g.id = s.group_id
+             WHERE s.semester_id = :sm
              ORDER BY se.lesson_num, se.weekday, se.position'
         );
-        $stmt->execute([':g' => $adminScheduleGroupId]);
+        $stmt->execute([':sm' => $adminScheduleSemesterId]);
         $adminScheduleEntries = $stmt->fetchAll();
     }
 }
