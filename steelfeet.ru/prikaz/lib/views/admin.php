@@ -48,12 +48,12 @@ $holidayChip = function (string $iso): string {
                     <table class="pzk-table">
                         <thead>
                             <tr>
-                                <th style="width:60px;">ID</th>
+                                <th style="width:50px;">ID</th>
                                 <th>Название</th>
-                                <th style="width:150px;">Начало</th>
-                                <th style="width:150px;">Окончание</th>
-                                <th style="width:130px;">Текущий</th>
-                                <th style="width:340px;">Действия</th>
+                                <th style="width:130px;">Начало</th>
+                                <th style="width:130px;">Окончание</th>
+                                <th style="width:110px;">Текущий</th>
+                                <th style="width:320px;">Действия</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -128,7 +128,7 @@ $holidayChip = function (string $iso): string {
                 </div>
             <?php endif; ?>
 
-            <details class="pzk-details" id="add-academic-year" style="margin-top: var(--space-lg);">
+            <details class="pzk-details" id="add-academic-year" style="margin-top: var(--space-sm);">
                 <summary class="pzk-details__summary">➕ Добавить учебный год</summary>
                 <form method="post" action="index.php?action=admin_academic_year_save"
                       class="pzk-form" autocomplete="off">
@@ -136,8 +136,7 @@ $holidayChip = function (string $iso): string {
                     <div>
                         <h3 class="pzk-form__title">Новый учебный год</h3>
                         <p class="pzk-form__hint">
-                            Название в формате «2025/2026». Текущий год — один на всю систему:
-                            назначение нового автоматически снимает флаг с предыдущего.
+                            Название в формате «2025/2026». Текущий год — один на всю систему.
                             Семестры «1 семестр» и «2 семестр» создаются автоматически — их можно
                             переименовать или удалить в блоке «Семестры и праздничные дни» ниже.
                         </p>
@@ -170,8 +169,8 @@ $holidayChip = function (string $iso): string {
             </details>
 
             <?php if ($adminAcademicYears !== []): ?>
-                <div style="margin-top: var(--space-xl);">
-                    <h3 style="font-family:'Cormorant Garamond','Inter',serif; font-size:1.4rem; font-weight:600; color:#6b5010; margin: 0 0 var(--space-md); padding-bottom: 8px; border-bottom: 2px solid #e8dcc0;">
+                <div style="margin-top: var(--space-md);">
+                    <h3 style="font-family:'Cormorant Garamond','Inter',serif; font-size:1.4rem; font-weight:600; color:#6b5010; margin: 0 0 var(--space-sm); padding-bottom: 6px; border-bottom: 2px solid #e8dcc0;">
                         Семестры и праздничные дни
                     </h3>
 
@@ -236,7 +235,7 @@ $holidayChip = function (string $iso): string {
                                                     праздников: <?= count($sm['holidays']) ?>
                                                 </span>
                                             </div>
-                                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                            <div style="display:flex; gap:6px; flex-wrap:wrap;">
                                                 <details class="pzk-row-details">
                                                     <summary class="pzk-btn pzk-btn--sm">Редактировать</summary>
                                                     <form method="post" action="index.php?action=admin_semester_save"
@@ -276,7 +275,7 @@ $holidayChip = function (string $iso): string {
 
                                         <div class="pzk-sem-card__body">
                                             <?php if ($sm['holidays'] === []): ?>
-                                                <p class="pzk-form__hint" style="margin:0 0 10px;">
+                                                <p class="pzk-form__hint" style="margin:0 0 6px;">
                                                     В семестре нет праздничных дней.
                                                 </p>
                                             <?php else: ?>
@@ -304,11 +303,11 @@ $holidayChip = function (string $iso): string {
                                                   class="pzk-holiday-form" autocomplete="off">
                                                 <?= csrf_field() ?>
                                                 <input type="hidden" name="semester_id" value="<?= $smId ?>">
-                                                <label class="pzk-field" style="flex: 0 0 180px;">
+                                                <label class="pzk-field" style="flex: 0 0 160px;">
                                                     <span class="pzk-field__label">Дата</span>
                                                     <input class="pzk-field__input" type="date" name="date" required>
                                                 </label>
-                                                <label class="pzk-field" style="flex: 1 1 220px;">
+                                                <label class="pzk-field" style="flex: 1 1 200px;">
                                                     <span class="pzk-field__label">Название (опционально)</span>
                                                     <input class="pzk-field__input" type="text" name="name"
                                                            placeholder="Например: День народного единства" autocomplete="off">
@@ -357,7 +356,7 @@ $holidayChip = function (string $iso): string {
                 </div>
             <?php else: ?>
                 <form method="get" action="index.php" class="pzk-inline-form" autocomplete="off"
-                      style="margin-bottom: var(--space-md);">
+                      style="margin-bottom: var(--space-sm);">
                     <input type="hidden" name="page" value="admin">
                     <input type="hidden" name="section" value="groups">
                     <label>Учебный год:
@@ -386,12 +385,12 @@ $holidayChip = function (string $iso): string {
                         <table class="pzk-table">
                             <thead>
                                 <tr>
-                                    <th style="width:60px;">ID</th>
-                                    <th style="width:200px;">Учебный год</th>
+                                    <th style="width:50px;">ID</th>
+                                    <th style="width:180px;">Учебный год</th>
                                     <th>Название</th>
-                                    <th style="width:180px;">Куратор</th>
+                                    <th style="width:160px;">Куратор</th>
                                     <th>Заметки</th>
-                                    <th style="width:280px;">Действия</th>
+                                    <th style="width:260px;">Действия</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -401,7 +400,7 @@ $holidayChip = function (string $iso): string {
                                         <td>
                                             <strong><?= e($g['year_name']) ?></strong>
                                             <?php if ((int) $g['year_is_current'] === 1): ?>
-                                                <br><span class="pzk-status pzk-status--active" style="margin-top:4px;">текущий</span>
+                                                <br><span class="pzk-status pzk-status--active" style="margin-top:2px;">текущий</span>
                                             <?php endif; ?>
                                         </td>
                                         <td><strong><?= e($g['name']) ?></strong></td>
@@ -458,7 +457,7 @@ $holidayChip = function (string $iso): string {
                                                 </form>
                                             </details>
                                             <form method="post" action="index.php?action=admin_group_delete"
-                                                  onsubmit="return confirm('Удалить группу «<?= e($g['name']) ?>» (<?= e($g['year_name']) ?>)? Студенты, привязанные к ней, останутся, но группа исчезнет из списка.');">
+                                                  onsubmit="return confirm('Удалить группу «<?= e($g['name']) ?>» (<?= e($g['year_name']) ?>)? Студенты останутся, группа исчезнет из списка.');">
                                                 <?= csrf_field() ?>
                                                 <input type="hidden" name="id" value="<?= (int) $g['id'] ?>">
                                                 <button type="submit" class="pzk-btn pzk-btn--sm">Удалить</button>
@@ -471,7 +470,7 @@ $holidayChip = function (string $iso): string {
                     </div>
                 <?php endif; ?>
 
-                <details class="pzk-details" id="add-group" style="margin-top: var(--space-lg);">
+                <details class="pzk-details" id="add-group" style="margin-top: var(--space-sm);">
                     <summary class="pzk-details__summary">➕ Добавить группу</summary>
                     <form method="post" action="index.php?action=admin_group_save"
                           class="pzk-form" autocomplete="off">
@@ -550,7 +549,7 @@ $holidayChip = function (string $iso): string {
                 </div>
             <?php else: ?>
                 <form method="get" action="index.php" class="pzk-inline-form" autocomplete="off"
-                      style="margin-bottom: var(--space-md);">
+                      style="margin-bottom: var(--space-sm);">
                     <input type="hidden" name="page" value="admin">
                     <input type="hidden" name="section" value="subjects">
                     <label>Учебный год:
@@ -594,14 +593,14 @@ $holidayChip = function (string $iso): string {
                         <table class="pzk-table">
                             <thead>
                                 <tr>
-                                    <th style="width:60px;">ID</th>
-                                    <th style="width:150px;">Учебный год</th>
-                                    <th style="width:90px;">Группа</th>
-                                    <th style="width:130px;">Краткое</th>
+                                    <th style="width:50px;">ID</th>
+                                    <th style="width:130px;">Учебный год</th>
+                                    <th style="width:80px;">Группа</th>
+                                    <th style="width:120px;">Краткое</th>
                                     <th>Полное название</th>
-                                    <th style="width:90px;">Часов</th>
-                                    <th style="width:170px;">Семестр / Практика</th>
-                                    <th style="width:280px;">Действия</th>
+                                    <th style="width:70px;">Часов</th>
+                                    <th style="width:150px;">Семестр / Практика</th>
+                                    <th style="width:260px;">Действия</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -611,7 +610,7 @@ $holidayChip = function (string $iso): string {
                                         <td>
                                             <strong><?= e($s['year_name']) ?></strong>
                                             <?php if ((int) $s['year_is_current'] === 1): ?>
-                                                <br><span class="pzk-status pzk-status--active" style="margin-top:4px;">текущий</span>
+                                                <br><span class="pzk-status pzk-status--active" style="margin-top:2px;">текущий</span>
                                             <?php endif; ?>
                                         </td>
                                         <td><strong><?= e($s['group_name']) ?></strong></td>
@@ -688,7 +687,7 @@ $holidayChip = function (string $iso): string {
                     </div>
                 <?php endif; ?>
 
-                <details class="pzk-details" id="add-subject" style="margin-top: var(--space-lg);">
+                <details class="pzk-details" id="add-subject" style="margin-top: var(--space-sm);">
                     <summary class="pzk-details__summary">➕ Добавить предмет</summary>
                     <form method="post" action="index.php?action=admin_subject_save"
                           class="pzk-form pzk-subject-form" autocomplete="off">
@@ -698,7 +697,7 @@ $holidayChip = function (string $iso): string {
                             <p class="pzk-form__hint">
                                 Предмет принадлежит одному учебному году, одной группе этого года
                                 и одному семестру. Если у группы два семестра — это две отдельные
-                                записи предмета (даже если предмет один и тот же).
+                                записи предмета.
                             </p>
                         </div>
                         <div class="pzk-form__grid">
@@ -823,8 +822,8 @@ $holidayChip = function (string $iso): string {
                 </div>
             <?php else: ?>
                 <?php foreach ($adminCurriculum as $subj): ?>
-                    <div style="margin-bottom: var(--space-xl);">
-                        <div style="display:flex; align-items:baseline; gap:12px; margin-bottom: var(--space-sm); flex-wrap:wrap;">
+                    <div style="margin-bottom: var(--space-md);">
+                        <div style="display:flex; align-items:baseline; gap:10px; margin-bottom: var(--space-xs); flex-wrap:wrap;">
                             <h3 style="font-family:'Cormorant Garamond','Inter',serif; font-size:1.15rem; font-weight:600; color:#6b5010; margin:0;">
                                 <?= e($subj['short_name']) ?>
                             </h3>
@@ -841,9 +840,9 @@ $holidayChip = function (string $iso): string {
                             <table class="pzk-table">
                                 <thead>
                                     <tr>
-                                        <th style="width:60px;">№</th>
+                                        <th style="width:50px;">№</th>
                                         <th>Тема</th>
-                                        <th style="width:200px;">Действия</th>
+                                        <th style="width:180px;">Действия</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -890,7 +889,7 @@ $holidayChip = function (string $iso): string {
                             </table>
                         </div>
 
-                        <details class="pzk-details" style="margin-top: var(--space-sm);">
+                        <details class="pzk-details" style="margin-top: var(--space-xs);">
                             <summary class="pzk-details__summary">➕ Добавить тему</summary>
                             <form method="post" action="index.php?action=admin_curriculum_save"
                                   class="pzk-form" autocomplete="off">
@@ -913,7 +912,7 @@ $holidayChip = function (string $iso): string {
                                 </div>
                             </form>
                         </details>
-                        <details class="pzk-details" style="margin-top: var(--space-sm);">
+                        <details class="pzk-details" style="margin-top: var(--space-xs);">
                             <summary class="pzk-details__summary">📋 Массовое добавление тем</summary>
                             <form method="post" action="index.php?action=admin_curriculum_bulk_add"
                                   class="pzk-form" autocomplete="off">
@@ -930,7 +929,7 @@ $holidayChip = function (string $iso): string {
                                 </div>
                                 <label class="pzk-field">
                                     <span class="pzk-field__label">Темы (<?= e($subj['short_name']) ?><?= $subj['semester_name'] !== '' ? ' · ' . e($subj['semester_name']) : '' ?>)</span>
-                                    <textarea class="pzk-field__textarea" name="topics" rows="12" required
+                                    <textarea class="pzk-field__textarea" name="topics" rows="10" required
                                               placeholder="Введение в предмет&#10;Основные понятия и определения&#10;..."></textarea>
                                 </label>
                                 <div class="pzk-form__actions">
@@ -989,7 +988,7 @@ $holidayChip = function (string $iso): string {
                 </div>
             <?php else: ?>
                 <form method="get" action="index.php" class="pzk-inline-form pzk-schedule-filter" autocomplete="off"
-                      style="margin-bottom: var(--space-md);">
+                      style="margin-bottom: var(--space-sm);">
                     <input type="hidden" name="page" value="admin">
                     <input type="hidden" name="section" value="schedule">
                     <label>Учебный год:
@@ -1040,8 +1039,8 @@ $holidayChip = function (string $iso): string {
                             <table class="pzk-table pzk-schedule-table">
                                 <thead>
                                     <tr>
-                                        <th style="width:50px;">№</th>
-                                        <th style="width:130px;">Продолжительность</th>
+                                        <th style="width:40px;">№</th>
+                                        <th style="width:110px;">Продолжительность</th>
                                         <?php foreach ($scheduleDays as $dayNum => $dayLabel): ?>
                                             <th><?= e($dayLabel) ?></th>
                                         <?php endforeach; ?>
@@ -1091,7 +1090,7 @@ $holidayChip = function (string $iso): string {
                             </table>
                         </div>
 
-                        <div class="pzk-form__actions" style="margin-top: var(--space-md);">
+                        <div class="pzk-form__actions" style="margin-top: var(--space-sm);">
                             <button type="submit" class="pzk-btn pzk-btn--primary">Сохранить расписание</button>
                         </div>
                     </form>
@@ -1115,13 +1114,13 @@ $holidayChip = function (string $iso): string {
                 <table class="pzk-table">
                     <thead>
                         <tr>
-                            <th style="width:60px;">ID</th>
-                            <th style="width:140px;">Логин</th>
+                            <th style="width:50px;">ID</th>
+                            <th style="width:130px;">Логин</th>
                             <th>ФИО</th>
-                            <th style="width:120px;">Роли</th>
-                            <th style="width:130px;">Статус</th>
-                            <th style="width:160px;">Последний вход</th>
-                            <th style="width:280px;">Действия</th>
+                            <th style="width:110px;">Роли</th>
+                            <th style="width:120px;">Статус</th>
+                            <th style="width:150px;">Последний вход</th>
+                            <th style="width:260px;">Действия</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1168,7 +1167,7 @@ $holidayChip = function (string $iso): string {
                 </table>
             </div>
 
-            <details class="pzk-details" id="add-user" style="margin-top: var(--space-lg);">
+            <details class="pzk-details" id="add-user" style="margin-top: var(--space-sm);">
                 <summary class="pzk-details__summary">➕ Создать пользователя</summary>
                 <form method="post" action="index.php?action=admin_user_create"
                       class="pzk-form" autocomplete="off">
@@ -1245,11 +1244,11 @@ $holidayChip = function (string $iso): string {
                 <table class="pzk-table">
                     <thead>
                         <tr>
-                            <th style="width:60px;">ID</th>
+                            <th style="width:50px;">ID</th>
                             <th>ФИО</th>
-                            <th style="width:100px;">Группа</th>
-                            <th style="width:160px;">Псевдоним</th>
-                            <th style="width:100px;">User ID</th>
+                            <th style="width:90px;">Группа</th>
+                            <th style="width:150px;">Псевдоним</th>
+                            <th style="width:90px;">User ID</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1284,7 +1283,7 @@ $holidayChip = function (string $iso): string {
 
             <form method="post" action="index.php?action=admin_parent_link"
                   class="pzk-inline-form" autocomplete="off"
-                  style="margin-bottom: var(--space-md);">
+                  style="margin-bottom: var(--space-sm);">
                 <?= csrf_field() ?>
                 <label>Родитель:
                     <select name="parent_id" class="pzk-field__input">
@@ -1309,7 +1308,7 @@ $holidayChip = function (string $iso): string {
                         <tr>
                             <th>Родитель</th>
                             <th>Студент</th>
-                            <th style="width:140px;"></th>
+                            <th style="width:130px;"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1360,11 +1359,11 @@ $holidayChip = function (string $iso): string {
                 <table class="pzk-table pzk-table--lessons">
                     <thead>
                         <tr>
-                            <th style="width:70px;">№</th>
-                            <th style="width:120px;">Дата</th>
+                            <th style="width:60px;">№</th>
+                            <th style="width:110px;">Дата</th>
                             <th>Тема</th>
                             <th>ДЗ</th>
-                            <th style="width:180px;"></th>
+                            <th style="width:160px;"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1402,7 +1401,7 @@ $holidayChip = function (string $iso): string {
                 </table>
             </div>
 
-            <details class="pzk-details" id="add-lesson" style="margin-top: var(--space-lg);">
+            <details class="pzk-details" id="add-lesson" style="margin-top: var(--space-sm);">
                 <summary class="pzk-details__summary">➕ Добавить урок</summary>
                 <form method="post" action="index.php?action=admin_lesson_save"
                       class="pzk-form" autocomplete="off">
@@ -1459,11 +1458,11 @@ $holidayChip = function (string $iso): string {
                     <table class="pzk-table">
                         <thead>
                             <tr>
-                                <th style="width:60px;">ID</th>
+                                <th style="width:50px;">ID</th>
                                 <th>Название</th>
-                                <th style="width:130px;">Тип</th>
-                                <th style="width:120px;">Участники</th>
-                                <th style="width:100px;">Фаза</th>
+                                <th style="width:120px;">Тип</th>
+                                <th style="width:110px;">Участники</th>
+                                <th style="width:80px;">Фаза</th>
                                 <th style="width:100px;">Репозиторий</th>
                             </tr>
                         </thead>
@@ -1496,7 +1495,7 @@ $holidayChip = function (string $iso): string {
                 <div class="uni-empty">Проектов пока нет. Добавьте первый.</div>
             <?php endif; ?>
 
-            <details class="pzk-details" id="add-project" style="margin-top: var(--space-lg);">
+            <details class="pzk-details" id="add-project" style="margin-top: var(--space-sm);">
                 <summary class="pzk-details__summary">➕ Создать проект</summary>
                 <form method="post" action="index.php?action=admin_project_create"
                       class="pzk-form" autocomplete="off">
@@ -1574,12 +1573,12 @@ $holidayChip = function (string $iso): string {
                 <table class="pzk-table pzk-table--audit">
                     <thead>
                         <tr>
-                            <th style="width:170px;">Время</th>
-                            <th style="width:120px;">Пользователь</th>
-                            <th style="width:160px;">Действие</th>
-                            <th style="width:160px;">Объект</th>
+                            <th style="width:150px;">Время</th>
+                            <th style="width:110px;">Пользователь</th>
+                            <th style="width:150px;">Действие</th>
+                            <th style="width:150px;">Объект</th>
                             <th>Мета</th>
-                            <th style="width:130px;">IP</th>
+                            <th style="width:110px;">IP</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1615,22 +1614,24 @@ $holidayChip = function (string $iso): string {
 <style>
 /* =============================================================================
    Стили админки. Применяются только на ?page=admin.
+   Сжато по вертикали/горизонтали, шрифты сохранены.
    ============================================================================= */
 
+/* ===== Таблицы ===== */
 .pzk-table th,
 .pzk-table td {
-    padding: 14px 18px;
-    line-height: 1.5;
+    padding: 6px 10px;
+    line-height: 1.4;
 }
 .pzk-table thead th {
-    padding-top: 13px;
-    padding-bottom: 13px;
+    padding-top: 6px;
+    padding-bottom: 6px;
     font-size: 0.72rem;
 }
 .pzk-table th:first-child,
-.pzk-table td:first-child { padding-left: 22px; }
+.pzk-table td:first-child { padding-left: 14px; }
 .pzk-table th:last-child,
-.pzk-table td:last-child  { padding-right: 22px; }
+.pzk-table td:last-child  { padding-right: 14px; }
 
 .pzk-table-wrap {
     overflow: auto;
@@ -1641,7 +1642,7 @@ $holidayChip = function (string $iso): string {
 
 .pzk-table td.pzk-table__actions {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     align-items: flex-start;
     flex-wrap: wrap;
 }
@@ -1651,25 +1652,25 @@ $holidayChip = function (string $iso): string {
     text-align: center;
     color: var(--color-tertiary);
     font-style: italic;
-    padding: 24px 18px !important;
+    padding: 14px 12px !important;
 }
 
 .pzk-table--lessons td.pzk-table__row-form {
-    padding: 8px 22px;
+    padding: 5px 14px;
     background: #fbfaf5;
 }
 .pzk-lesson-form {
     display: grid;
-    grid-template-columns: 70px 110px 1fr 1fr 130px;
-    gap: 8px;
+    grid-template-columns: 60px 100px 1fr 1fr 120px;
+    gap: 6px;
     align-items: center;
     width: 100%;
 }
-.pzk-lesson-delete { display: block; margin-top: 6px; }
+.pzk-lesson-delete { display: block; margin-top: 4px; }
 
 .pzk-table td code {
     background: rgba(139, 105, 20, 0.08);
-    padding: 2px 6px;
+    padding: 1px 5px;
     border-radius: 2px;
     font-size: 0.85em;
 }
@@ -1680,7 +1681,7 @@ $holidayChip = function (string $iso): string {
 
 .pzk-status {
     display: inline-block;
-    padding: 3px 10px;
+    padding: 2px 8px;
     border-radius: 10px;
     font-size: 0.72rem;
     font-weight: 600;
@@ -1706,23 +1707,23 @@ $holidayChip = function (string $iso): string {
 .pzk-hint-inline {
     font-size: 0.78rem;
     color: var(--color-tertiary);
-    padding: 6px 4px;
+    padding: 4px 2px;
     display: inline-block;
 }
 
 .pzk-inline-form {
     display: flex;
-    gap: 14px;
+    gap: 8px;
     align-items: center;
     flex-wrap: wrap;
-    padding: 14px 18px;
+    padding: 8px 10px;
     background: var(--color-light);
     border: 1px solid rgba(26, 26, 26, 0.08);
 }
 .pzk-inline-form label {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     font-size: 0.88rem;
     color: var(--color-secondary);
 }
@@ -1735,37 +1736,37 @@ $holidayChip = function (string $iso): string {
 .pzk-row-details summary::marker { content: ''; }
 .pzk-row-details__form {
     display: flex;
-    gap: 6px;
-    margin-top: 6px;
+    gap: 4px;
+    margin-top: 4px;
     align-items: center;
     flex-wrap: wrap;
 }
 .pzk-row-details__form input {
-    padding: 4px 8px;
+    padding: 3px 7px;
     font-size: 0.8rem;
-    min-width: 160px;
+    min-width: 140px;
 }
 .pzk-edit-form {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
     background: #fff;
-    padding: 14px;
+    padding: 10px;
     border: 1px solid rgba(26, 26, 26, 0.1);
-    min-width: 300px;
-    margin-top: 6px;
+    min-width: 260px;
+    margin-top: 4px;
 }
-.pzk-edit-form .pzk-field { gap: 4px; }
+.pzk-edit-form .pzk-field { gap: 3px; }
 .pzk-edit-form .pzk-field__label { font-size: 0.78rem; }
-.pzk-edit-form .pzk-field__input { padding: 6px 10px; font-size: 0.85rem; }
-.pzk-edit-form .pzk-btn { align-self: flex-start; margin-top: 6px; }
+.pzk-edit-form .pzk-field__input { padding: 4px 8px; font-size: 0.85rem; }
+.pzk-edit-form .pzk-btn { align-self: flex-start; margin-top: 4px; }
 
 .pzk-details {
     background: #fbf7ec;
     border: 1px solid #e8dcc0;
     border-left: 4px solid #8b6914;
     box-shadow: 0 2px 8px rgba(80, 60, 20, 0.06);
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-sm);
     transition: box-shadow 0.2s;
 }
 .pzk-details[open] {
@@ -1773,7 +1774,7 @@ $holidayChip = function (string $iso): string {
 }
 
 .pzk-details__summary {
-    padding: 18px 24px;
+    padding: 10px 14px;
     font-family: 'Cormorant Garamond', 'Inter', serif;
     font-size: 1.2rem;
     font-weight: 600;
@@ -1804,7 +1805,7 @@ $holidayChip = function (string $iso): string {
     font-weight: 600;
     color: #8b1a1a;
     letter-spacing: 0.02em;
-    margin: 0 0 6px;
+    margin: 0 0 4px;
     line-height: 1.2;
 }
 .pzk-form__hint {
@@ -1812,27 +1813,27 @@ $holidayChip = function (string $iso): string {
     font-size: 0.95rem;
     color: #6b5d3f;
     font-style: italic;
-    line-height: 1.55;
+    line-height: 1.4;
     margin: 0;
 }
 
 .pzk-form {
-    padding: 26px 28px 24px;
+    padding: 14px 16px;
     display: flex;
     flex-direction: column;
-    gap: 22px;
+    gap: 12px;
 }
 
 .pzk-form__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 18px 22px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px 14px;
 }
 
 .pzk-field {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
 }
 .pzk-field__label {
     font-family: 'Cormorant Garamond', 'Inter', serif;
@@ -1844,7 +1845,7 @@ $holidayChip = function (string $iso): string {
     margin: 0;
 }
 .pzk-field__input {
-    padding: 13px 16px;
+    padding: 8px 12px;
     border: 1px solid #d4c8a8;
     background: #ffffff;
     font-family: 'Inter', -apple-system, sans-serif;
@@ -1865,21 +1866,21 @@ $holidayChip = function (string $iso): string {
     font-size: 0.95rem;
 }
 .pzk-field__input--sm {
-    padding: 6px 10px;
+    padding: 4px 8px;
     font-size: 0.85rem;
 }
 .pzk-field__textarea {
-    padding: 13px 16px;
+    padding: 8px 12px;
     border: 1px solid #d4c8a8;
     background: #ffffff;
     font-family: 'Inter', -apple-system, sans-serif;
     font-size: 1rem;
-    line-height: 1.55;
+    line-height: 1.5;
     color: #1a1a1a;
     transition: border-color 0.15s, box-shadow 0.15s;
     border-radius: 2px;
     width: 100%;
-    min-height: 180px;
+    min-height: 120px;
     resize: vertical;
     display: block;
 }
@@ -1896,16 +1897,16 @@ $holidayChip = function (string $iso): string {
 .pzk-checkbox {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: 6px;
     font-family: 'Inter', sans-serif;
     font-size: 0.98rem;
     color: #2d2d2d;
     cursor: pointer;
-    padding: 4px 0;
+    padding: 2px 0;
 }
 .pzk-checkbox input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     accent-color: #8b6914;
     cursor: pointer;
     flex-shrink: 0;
@@ -1914,7 +1915,7 @@ $holidayChip = function (string $iso): string {
 .pzk-fieldset {
     border: 1px solid #e8dcc0;
     background: rgba(255, 255, 255, 0.6);
-    padding: 16px 20px 18px;
+    padding: 10px 14px;
     border-radius: 2px;
     margin: 0;
 }
@@ -1924,19 +1925,19 @@ $holidayChip = function (string $iso): string {
     font-weight: 600;
     letter-spacing: 0.03em;
     color: #6b5010;
-    padding: 0 10px;
+    padding: 0 6px;
 }
 .pzk-checkbox-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 6px 18px;
-    max-height: 280px;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 4px 12px;
+    max-height: 240px;
     overflow-y: auto;
-    padding: 6px 2px;
+    padding: 4px 0;
 }
 
 .pzk-btn {
-    padding: 10px 22px;
+    padding: 6px 14px;
     font-family: 'Cormorant Garamond', 'Inter', serif;
     font-size: 1.05rem;
     font-weight: 600;
@@ -1972,7 +1973,7 @@ $holidayChip = function (string $iso): string {
     box-shadow: 0 3px 10px rgba(139, 105, 20, 0.3);
 }
 .pzk-btn--sm {
-    padding: 7px 14px;
+    padding: 4px 10px;
     font-size: 0.88rem;
     letter-spacing: 0.03em;
 }
@@ -1981,10 +1982,10 @@ $holidayChip = function (string $iso): string {
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    gap: 12px;
-    padding-top: 18px;
+    gap: 10px;
+    padding-top: 10px;
     border-top: 1px solid #e8dcc0;
-    margin-top: 4px;
+    margin-top: 2px;
 }
 
 /* ===== Семестры и праздники (в разделе «Учебный год») ===== */
@@ -1992,18 +1993,18 @@ $holidayChip = function (string $iso): string {
     background: #fbf7ec;
     border: 1px solid #e8dcc0;
     border-left: 4px solid #8b6914;
-    padding: 18px 22px;
-    margin-bottom: var(--space-md);
+    padding: 10px 14px;
+    margin-bottom: var(--space-sm);
     border-radius: 2px;
 }
 .pzk-year-block__head {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
     flex-wrap: wrap;
-    padding-bottom: 12px;
-    margin-bottom: 14px;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
     border-bottom: 1px solid #e8dcc0;
 }
 .pzk-year-block__title {
@@ -2016,15 +2017,15 @@ $holidayChip = function (string $iso): string {
     display: block;
     font-size: 0.78rem;
     color: var(--color-tertiary);
-    margin-top: 2px;
+    margin-top: 1px;
 }
 
 .pzk-sem-card {
     background: #fff;
     border: 1px solid rgba(26, 26, 26, 0.1);
     border-radius: 2px;
-    padding: 14px 18px;
-    margin-bottom: 12px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
 }
 .pzk-sem-card:last-child {
     margin-bottom: 0;
@@ -2033,10 +2034,10 @@ $holidayChip = function (string $iso): string {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: wrap;
-    margin-bottom: 12px;
-    padding-bottom: 10px;
+    margin-bottom: 6px;
+    padding-bottom: 6px;
     border-bottom: 1px dashed #e8dcc0;
 }
 .pzk-sem-card__title {
@@ -2044,32 +2045,32 @@ $holidayChip = function (string $iso): string {
     font-size: 2.1rem;
     font-weight: 600;
     color: #1a1a1a;
-    line-height: 1.15;
+    line-height: 1.1;
 }
 .pzk-sem-card__meta {
     display: block;
     font-size: 0.75rem;
     color: var(--color-tertiary);
-    margin-top: 2px;
+    margin-top: 1px;
 }
 .pzk-sem-empty {
     font-size: 0.85rem;
     color: var(--color-tertiary);
     font-style: italic;
-    padding: 8px 4px;
+    padding: 4px 2px;
 }
 
 .pzk-holiday-list {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 12px;
+    gap: 6px;
+    margin-bottom: 8px;
 }
 .pzk-holiday-chip {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 5px 8px 5px 10px;
+    gap: 6px;
+    padding: 3px 6px 3px 8px;
     background: #fef3c7;
     border: 1px solid #d97706;
     border-left: 3px solid #d97706;
@@ -2085,15 +2086,15 @@ $holidayChip = function (string $iso): string {
 }
 .pzk-holiday-chip__name {
     color: #92400e;
-    padding-left: 6px;
+    padding-left: 5px;
     border-left: 1px solid rgba(217, 119, 6, 0.3);
 }
 .pzk-holiday-chip__remove {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     padding: 0;
     margin-left: 2px;
     background: transparent;
@@ -2113,12 +2114,19 @@ $holidayChip = function (string $iso): string {
 .pzk-holiday-form {
     display: flex;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 8px;
     align-items: flex-end;
-    padding: 12px 14px;
+    padding: 8px 10px;
     background: #fbf7ec;
     border: 1px solid #e8dcc0;
     border-radius: 2px;
+}
+.pzk-holiday-form .pzk-field__label {
+    font-size: 0.92rem;
+}
+.pzk-holiday-form .pzk-field__input {
+    padding: 5px 9px;
+    font-size: 0.9rem;
 }
 
 /* ===== Расписание ===== */
@@ -2127,47 +2135,48 @@ $holidayChip = function (string $iso): string {
     width: 100%;
 }
 .pzk-schedule-table th:nth-child(1),
-.pzk-schedule-table td:nth-child(1) { width: 40px; text-align: center; }
+.pzk-schedule-table td:nth-child(1) { width: 36px; text-align: center; }
 .pzk-schedule-table th:nth-child(2),
-.pzk-schedule-table td:nth-child(2) { width: 120px; }
+.pzk-schedule-table td:nth-child(2) { width: 110px; }
 .pzk-schedule-table th:nth-child(n+3),
-.pzk-schedule-table td:nth-child(n+3) { width: 14%; }
+.pzk-schedule-table td:nth-child(n+3) { width: 14.5%; }
 .pzk-schedule-cell {
-    padding: 6px 6px !important;
+    padding: 4px 4px !important;
     vertical-align: top;
     background: #fffdf5;
 }
 .pzk-schedule-entry {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 2px 0;
+    gap: 3px;
+    padding: 1px 0;
 }
 .pzk-schedule-entry select {
     width: 100%;
-    padding: 5px 8px !important;
+    padding: 3px 6px !important;
     font-size: 0.8rem !important;
-    line-height: 1.3;
+    line-height: 1.25;
 }
 .pzk-schedule-sep {
     border: none;
     border-top: 1px dashed #e0d5b5;
-    margin: 6px 0;
+    margin: 4px 0;
 }
 
+/* ===== Мобильный ===== */
 @media (max-width: 900px) {
-    .pzk-table th, .pzk-table td { padding: 10px 12px; }
-    .pzk-table th:first-child, .pzk-table td:first-child { padding-left: 14px; }
-    .pzk-table th:last-child,  .pzk-table td:last-child  { padding-right: 14px; }
+    .pzk-table th, .pzk-table td { padding: 5px 8px; }
+    .pzk-table th:first-child, .pzk-table td:first-child { padding-left: 10px; }
+    .pzk-table th:last-child,  .pzk-table td:last-child  { padding-right: 10px; }
     .pzk-lesson-form { grid-template-columns: 1fr; }
-    .pzk-form { padding: 20px 18px; }
+    .pzk-form { padding: 12px 12px; }
     .pzk-form__title { font-size: 1.25rem; }
-    .pzk-details__summary { padding: 14px 16px; font-size: 1.05rem; }
+    .pzk-details__summary { padding: 8px 12px; font-size: 1.05rem; }
     .pzk-form__actions { justify-content: stretch; }
     .pzk-form__actions .pzk-btn { width: 100%; justify-content: center; }
 
-    .pzk-year-block { padding: 14px 14px; }
-    .pzk-sem-card { padding: 12px 12px; }
+    .pzk-year-block { padding: 8px 10px; }
+    .pzk-sem-card { padding: 8px 10px; }
     .pzk-sem-card__title { font-size: 1.6rem; }
     .pzk-holiday-form { flex-direction: column; align-items: stretch; }
     .pzk-holiday-form .pzk-field { flex: 1 1 auto !important; }
