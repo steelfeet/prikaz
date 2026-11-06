@@ -7,7 +7,8 @@ declare(strict_types=1);
             <h2 class="panel__title">Предметы</h2>
             <p class="panel__subtitle">
                 Каждый учебный год — свой набор предметов. Предмет привязан к группе,
-                у каждого семестра или практики — свой предмет. Темы показываются под предметом.
+                у каждого семестра или практики — свой предмет. Темы и КТП
+                показываются под предметом.
                 <?php if ($adminCurrentYear !== null): ?>
                     В текущем году <strong><?= e($adminCurrentYear['name']) ?></strong>
                     предметов: <strong><?= $adminCurrentYearSubjectCount ?></strong>.
@@ -71,7 +72,7 @@ declare(strict_types=1);
                 <?php endif; ?>
             </div>
         <?php else: ?>
-            <div class="pzk-table-wrap">
+            <div class="pzk-table-wrap pzk-table-wrap--subjects">
                 <table class="pzk-table">
                     <thead>
                         <tr>
@@ -87,7 +88,9 @@ declare(strict_types=1);
                     </thead>
                     <tbody>
                         <?php foreach ($adminSubjects as $s): ?>
-                            <?php $sTopics = $s['topics'] ?? []; ?>
+                            <?php
+                                $sTopics = $s['topics'] ?? [];
+                            ?>
                             <tr>
                                 <td><?= (int) $s['id'] ?></td>
                                 <td>
@@ -288,6 +291,8 @@ declare(strict_types=1);
                                             </div>
                                         </div>
                                     </details>
+
+                                    <?php require __DIR__ . '/_ktp_block.php'; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -306,7 +311,7 @@ declare(strict_types=1);
                     <p class="pzk-form__hint">
                         Предмет принадлежит одному учебному году, одной группе этого года
                         и одному семестру. Если у группы два семестра — это две отдельные
-                        записи предмета. Темы добавляются после создания предмета.
+                        записи предмета. Темы и КТП добавляются после создания предмета.
                     </p>
                 </div>
                 <div class="pzk-form__grid">

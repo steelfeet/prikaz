@@ -708,6 +708,127 @@ if ($action === 'admin_curriculum_bulk_add') {
     redirect($backUrl);
 }
 
+
+// ===== КТП: генерация =====
+if ($action === 'admin_ktp_generate') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $subjectId = (int) ($_POST['subject_id'] ?? 0);
+
+    $backUrl = 'index.php?page=admin&section=subjects';
+    if ($subjectId > 0) {
+        $stmt = $pdo->prepare(
+            'SELECT sm.academic_year_id FROM subjects s
+             JOIN semesters sm ON sm.id = s.semester_id
+             WHERE s.id = :id'
+        );
+        $stmt->execute([':id' => $subjectId]);
+        $yearId = (int) $stmt->fetchColumn();
+        if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
+        $backUrl .= '#ktp-' . $subjectId;
+    }
+
+    if ($subjectId <= 0) {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Предмет не указан.']);
+        flash_set('danger', 'Предмет не указан.');
+        redirect($backUrl);
+    }
+
+    try {
+        ktp_generate($subjectId, $pdo);
+        audit_log((int) $currentUser['id'], 'ktp_generate', 'subject', $subjectId);
+
+        if (wants_json()) {
+            json_response(['ok' => true, 'html' => ktp_render_block($subjectId), 'subject_id' => $subjectId]);
+        }
+        flash_set('success', 'КТП сгенерировано.');
+    } catch (Throwable $e) {
+        if (wants_json()) json_response(['ok' => false, 'error' => $e->getMessage()]);
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect($backUrl);
+}
+
+// ===== КТП: дублировать тему на следующий урок =====
+if ($action === 'admin_ktp_add_more') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $entryId = (int) ($_POST['id'] ?? 0);
+
+    $backUrl = 'index.php?page=admin&section=subjects';
+    $subjectId = 0;
+    try {
+        $stmt = $pdo->prepare('SELECT subject_id FROM ktp_entries WHERE id = :id');
+        $stmt->execute([':id' => $entryId]);
+        $subjectId = (int) $stmt->fetchColumn();
+        if ($subjectId > 0) {
+            $stmt = $pdo->prepare(
+                'SELECT sm.academic_year_id FROM subjects s
+                 JOIN semesters sm ON sm.id = s.semester_id
+                 WHERE s.id = :id'
+            );
+            $stmt->execute([':id' => $subjectId]);
+            $yearId = (int) $stmt->fetchColumn();
+            if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
+            $backUrl .= '#ktp-' . $subjectId;
+        }
+        ktp_add_more($entryId, $pdo);
+        audit_log((int) $currentUser['id'], 'ktp_add_more', 'ktp_entry', $entryId);
+
+        if (wants_json()) {
+            $html = $subjectId > 0 ? ktp_render_block($subjectId) : '';
+            json_response(['ok' => true, 'html' => $html, 'subject_id' => $subjectId]);
+        }
+        flash_set('success', 'К теме добавлен ещё один урок.');
+    } catch (Throwable $e) {
+        if (wants_json()) json_response(['ok' => false, 'error' => $e->getMessage()]);
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect($backUrl);
+}
+
+// ===== КТП: удалить тему =====
+if ($action === 'admin_ktp_delete') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $entryId = (int) ($_POST['id'] ?? 0);
+
+    $backUrl = 'index.php?page=admin&section=subjects';
+    $subjectId = 0;
+    try {
+        $stmt = $pdo->prepare('SELECT subject_id FROM ktp_entries WHERE id = :id');
+        $stmt->execute([':id' => $entryId]);
+        $subjectId = (int) $stmt->fetchColumn();
+        if ($subjectId > 0) {
+            $stmt = $pdo->prepare(
+                'SELECT sm.academic_year_id FROM subjects s
+                 JOIN semesters sm ON sm.id = s.semester_id
+                 WHERE s.id = :id'
+            );
+            $stmt->execute([':id' => $subjectId]);
+            $yearId = (int) $stmt->fetchColumn();
+            if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
+            $backUrl .= '#ktp-' . $subjectId;
+        }
+        ktp_delete($entryId, $pdo);
+        audit_log((int) $currentUser['id'], 'ktp_delete', 'ktp_entry', $entryId);
+
+        if (wants_json()) {
+            $html = $subjectId > 0 ? ktp_render_block($subjectId) : '';
+            json_response(['ok' => true, 'html' => $html, 'subject_id' => $subjectId]);
+        }
+        flash_set('success', 'Тема удалена из КТП.');
+    } catch (Throwable $e) {
+        if (wants_json()) json_response(['ok' => false, 'error' => $e->getMessage()]);
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect($backUrl);
+}
+
+
+
+
+
 // ===== РАСПИСАНИЕ: сохранение (перезапись семестра) =====
 if ($action === 'admin_schedule_save') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }

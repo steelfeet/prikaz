@@ -168,3 +168,4 @@ require_once __DIR__ . '/utils.php';
 require_once __DIR__ . '/journal.php';
 require_once __DIR__ . '/projects.php';
 require_once __DIR__ . '/schedule.php';
+require_once __DIR__ . '/ktp.php';

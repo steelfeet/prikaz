@@ -274,7 +274,7 @@ if (!$isCli && $resetRequested && !$isPost) {
     init_head('Сброс БД Приказа');
     echo '<h1>Сброс базы данных</h1>';
     echo '<div class="box box--danger">';
-    echo '<strong>Внимание.</strong> Эта операция удалит текущую БД со всеми пользователями, оценками, проектами и историей. Отменить нельзя.';
+    echo '<strong>Внимание.</strong> Эта операция удалит текущую БД со всеми пользователями, оценками, проектами, КТП и историей. Отменить нельзя.';
     echo '</div>';
     echo '<form method="post" action="init.php?reset=1" style="margin-top:24px;">';
     echo '<button type="submit" class="btn">Да, сбросить и создать заново</button>';
@@ -540,10 +540,12 @@ SQL);
 init_out('✓ Схема применена', $isCli);
 
 // =============================================================================
-// subjects + curriculum + schedule_entries.
+// subjects + curriculum + schedule_entries + ktp_entries.
 //
 // Старую схему subjects (с academic_year_id + semester_practice) сносим
 // целиком, вместе с curriculum и schedule_entries, которые на неё ссылаются.
+// ktp_entries — новая сущность; при миграции старых БД её просто не было,
+// создаётся при первом прогоне. На subjects ссылается каскадно.
 // =============================================================================
 $subjectCols = [];
 foreach ($pdo->query('PRAGMA table_info(subjects)')->fetchAll() as $col) {
@@ -594,10 +596,27 @@ CREATE TABLE IF NOT EXISTS schedule_entries (
 CREATE INDEX IF NOT EXISTS idx_schedule_group    ON schedule_entries(group_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_weekday  ON schedule_entries(weekday);
 CREATE INDEX IF NOT EXISTS idx_schedule_lesson   ON schedule_entries(lesson_num);
+
+CREATE TABLE IF NOT EXISTS ktp_entries (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    ord        INTEGER NOT NULL,
+    topic      TEXT NOT NULL,
+    weight     INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (subject_id, ord)
+);
+CREATE INDEX IF NOT EXISTS idx_ktp_subject ON ktp_entries(subject_id);
 SQL;
 
 if ($needRecreate) {
-    $dropped = ['subjects' => 0, 'curriculum' => 0, 'schedule_entries' => 0];
+    $dropped = [
+        'subjects'         => 0,
+        'curriculum'       => 0,
+        'schedule_entries' => 0,
+        'ktp_entries'      => 0,
+    ];
     foreach (array_keys($dropped) as $tbl) {
         try {
             $dropped[$tbl] = (int) $pdo->query("SELECT COUNT(*) FROM {$tbl}")->fetchColumn();
@@ -608,6 +627,7 @@ if ($needRecreate) {
 
     $pdo->exec('PRAGMA foreign_keys = OFF');
     try {
+        $pdo->exec('DROP TABLE IF EXISTS ktp_entries');
         $pdo->exec('DROP TABLE IF EXISTS schedule_entries');
         $pdo->exec('DROP TABLE IF EXISTS curriculum');
         $pdo->exec('DROP TABLE IF EXISTS subjects');
@@ -628,15 +648,16 @@ if ($needRecreate) {
     }
 
     init_out(
-        "✓ subjects, curriculum, schedule_entries пересозданы в новой схеме "
+        "✓ subjects, curriculum, schedule_entries, ktp_entries пересозданы в новой схеме "
         . "(удалено: предметов {$dropped['subjects']}, "
         . "тем плана {$dropped['curriculum']}, "
-        . "записей расписания {$dropped['schedule_entries']})",
+        . "записей расписания {$dropped['schedule_entries']}, "
+        . "записей КТП {$dropped['ktp_entries']})",
         $isCli
     );
 } else {
     $pdo->exec($createSubjectsSql);
-    init_out('✓ subjects, curriculum, schedule_entries на месте', $isCli);
+    init_out('✓ subjects, curriculum, schedule_entries, ktp_entries на месте', $isCli);
 }
 
 // =============================================================================
@@ -761,6 +782,9 @@ $help = [
     ['prikaz-projects', 'Как устроены проекты',
      "Проект проходит 4 фазы: Выбор темы → Работа над проектом → Предварительная защита → Защита.\n\nНад одним проектом может работать несколько студентов.\nУ одного студента может быть несколько проектов.\nВозврат к предыдущей фазе — нормальный процесс доработки.",
      'all'],
+    ['prikaz-ktp', 'Как работает КТП',
+     "КТП — Календарно-Тематическое Планирование.\n\nЭто распределение тем предмета по датам уроков семестра. Строится по темам предмета и расписанию.\n\nЕсли в неделю 1 урок — на тему 1 урок, если 2 — 2 урока, если 3 — 2 на одну тему и 1 на следующую, если 4 — по 2 на тему. Подгруппы идут параллельно по одной теме. Праздничные дни пропускаются.\n\nПри редактировании: «+ Ещё одно» — добавить один урок к текущей теме, «Удалить» — убрать тему, номера и даты пересчитаются. «Пересоздать» — сгенерировать КТП заново по текущим темам и расписанию.",
+     'admin'],
     ['prikaz-aliases', 'Псевдонимы и персональные данные',
      "В репозиториях (Gogs, GitHub) используются только псевдонимы вида s-<группа>-<номер>.\n\nРасшифровка «псевдоним → ФИО» хранится только в Приказе. Это требование 152-ФЗ.\n\nРаздел «Студенты» в админке показывает соответствие.",
      'admin'],
@@ -785,7 +809,7 @@ $tables = [
     'lessons', 'grades', 'project_phases', 'projects', 'project_students',
     'project_history', 'parent_visits', 'audit_log', 'help_articles',
     'help_feedback', 'academic_years', 'groups', 'semesters', 'subjects',
-    'curriculum', 'schedule_entries', 'holidays',
+    'curriculum', 'schedule_entries', 'holidays', 'ktp_entries',
 ];
 $counts = [];
 foreach ($tables as $t) {

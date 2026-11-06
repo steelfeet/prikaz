@@ -260,7 +260,6 @@ if ($viewRole === 'admin') {
          ORDER BY ay.start_date DESC, sm.ord, sm.name'
     )->fetchAll();
 
-    // Праздники: все сразу, сгруппируем по semester_id
     $holidaysBySemester = [];
     try {
         $rows = $pdo->query(
@@ -271,7 +270,6 @@ if ($viewRole === 'admin') {
         }
     } catch (Throwable $e) {}
 
-    // Семестры по годам, с праздниками внутри
     foreach ($adminAllSemesters as $sm) {
         $yearId  = (int) $sm['academic_year_id'];
         $smId    = (int) $sm['id'];
@@ -326,12 +324,11 @@ if ($viewRole === 'admin') {
     $stmt->execute($params);
     $adminSubjects = $stmt->fetchAll();
 
-    // ===== Темы для каждого предмета =====
-    // Отдельного «Учебного плана» в UI больше нет: темы хранятся в таблице
-    // curriculum с FK на subject_id и показываются под своим предметом.
+    // ===== Темы и КТП для каждого предмета =====
     if ($adminSubjects !== []) {
-        $subjectIds = array_map(fn($s) => (int) $s['id'], $adminSubjects);
+        $subjectIds   = array_map(fn($s) => (int) $s['id'], $adminSubjects);
         $placeholders = implode(',', array_fill(0, count($subjectIds), '?'));
+
         $stmt = $pdo->prepare(
             "SELECT id, subject_id, ord, topic
              FROM curriculum
@@ -343,8 +340,35 @@ if ($viewRole === 'admin') {
         foreach ($stmt->fetchAll() as $t) {
             $topicsBySubject[(int) $t['subject_id']][] = $t;
         }
+
+        $stmt = $pdo->prepare(
+            "SELECT id, subject_id, ord, topic
+             FROM ktp_entries
+             WHERE subject_id IN ($placeholders)
+             ORDER BY subject_id, ord, id"
+        );
+        $stmt->execute($subjectIds);
+        $ktpBySubject = [];
+        foreach ($stmt->fetchAll() as $k) {
+            $ktpBySubject[(int) $k['subject_id']][] = $k;
+        }
+
         foreach ($adminSubjects as &$subj) {
-            $subj['topics'] = $topicsBySubject[(int) $subj['id']] ?? [];
+            $sid = (int) $subj['id'];
+            $subj['topics'] = $topicsBySubject[$sid] ?? [];
+            $subj['ktp']    = $ktpBySubject[$sid] ?? [];
+
+            $blocks = ktp_lesson_blocks($sid, $pdo);
+            $subj['ktp_blocks_count'] = count($blocks);
+            $subj['ktp_tariff']       = ktp_tariff_total($blocks);
+
+            if ($subj['ktp'] !== []) {
+                $subj['ktp_layout'] = ktp_layout($sid, $pdo, $blocks);
+                $subj['ktp_hours']  = ktp_hours_from_layout($subj['ktp_layout']);
+            } else {
+                $subj['ktp_layout'] = [];
+                $subj['ktp_hours']  = 0;
+            }
         }
         unset($subj);
     }

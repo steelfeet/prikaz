@@ -28,6 +28,13 @@ declare(strict_types=1);
 }
 .pzk-table-wrap > .pzk-table { border: none; }
 
+/* В секции «Предметы» обёртка идёт без своего overflow, чтобы
+   sticky-шапка КТП цеплялась к viewport, а не к scroll-контейнеру.
+   На узких экранах (см. media query) overflow возвращается. */
+.pzk-table-wrap--subjects {
+    overflow: visible;
+}
+
 .pzk-table td.pzk-table__actions {
     display: flex;
     gap: 6px;
@@ -365,6 +372,17 @@ declare(strict_types=1);
     font-size: 0.88rem;
     letter-spacing: 0.03em;
 }
+.pzk-btn[disabled] {
+    opacity: 0.55;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+.pzk-btn[disabled]:hover {
+    background: #8b6914;
+    border-color: #8b6914;
+    color: #fff;
+    box-shadow: none;
+}
 
 .pzk-form__actions {
     display: flex;
@@ -593,6 +611,97 @@ declare(strict_types=1);
     padding: 8px 10px !important;
 }
 
+/* ===== КТП ===== */
+.pzk-subject-ktp {
+    background: #f5f0e0;
+    border-left: 3px solid #8b1a1a;
+}
+.pzk-ktp__head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 6px 10px;
+    background: #fbf7ec;
+    border: 1px solid #e8dcc0;
+    border-left: 3px solid #8b6914;
+    border-bottom: 0;
+    /* Нижняя граница шапки — это верхняя граница таблицы.
+       См. .pzk-ktp-table-wrap (border-top снят) и .pzk-ktp-table thead th
+       (top: var(--ktp-head-h)) — они стыкуются без зазора. */
+    margin-bottom: 0;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+}
+.pzk-ktp__head--match {
+    background: #f0fdf4;
+    border-left-color: #16a34a;
+}
+.pzk-ktp__title {
+    font-family: 'Cormorant Garamond', 'Inter', serif;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #6b5010;
+}
+.pzk-ktp__hours {
+    font-size: 0.9rem;
+    color: var(--color-secondary);
+}
+.pzk-ktp__match-tag {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 8px;
+    background: rgba(22, 163, 74, 0.12);
+    color: #15803d;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+.pzk-ktp-table-wrap {
+    overflow: visible;
+    /* верхняя граница не нужна: её место занимает border-bottom шапки */
+    border: 1px solid rgba(26, 26, 26, 0.1);
+    border-top: 0;
+    background: #fff;
+}
+.pzk-ktp-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.85rem;
+}
+.pzk-ktp-table th,
+.pzk-ktp-table td {
+    padding: 5px 10px;
+    border-bottom: 1px solid rgba(26, 26, 26, 0.08);
+    text-align: left;
+    vertical-align: middle;
+}
+.pzk-ktp-table thead th {
+    position: sticky;
+    /* вплотную под шапкой: без +8px, без лишнего зазора */
+    top: var(--ktp-head-h, 42px);
+    z-index: 2;
+    background: #fbf7ec;
+    color: #6b5010;
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-top: 1px solid #e8dcc0;
+    border-bottom: 2px solid #e8dcc0;
+}
+.pzk-ktp-table tbody tr:hover {
+    background: rgba(139, 105, 20, 0.03);
+}
+.pzk-ktp-table td.pzk-table__actions {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
 /* ===== Расписание ===== */
 .pzk-schedule-table {
     table-layout: fixed;
@@ -620,6 +729,23 @@ declare(strict_types=1);
     padding: 3px 6px !important;
     font-size: 0.8rem !important;
     line-height: 1.25;
+}
+
+/* ===== Узкие экраны: возвращаем внутреннюю прокрутку, отключаем sticky =====
+   На ширине до 1200px таблицы могут не влезать в экран, поэтому
+   overflow-контейнер возвращается, а sticky-элементы отключаются —
+   иначе шапка начнёт цепляться к внутреннему scroll-контейнеру. */
+@media (max-width: 1200px) {
+    .pzk-table-wrap--subjects { overflow: auto; }
+    .pzk-ktp__head { position: static; }
+    .pzk-ktp-table-wrap {
+        overflow-x: auto;
+        border-top: 1px solid rgba(26, 26, 26, 0.1);
+    }
+    .pzk-ktp-table thead th {
+        position: static;
+        border-top: 0;
+    }
 }
 
 /* ===== Мобильный ===== */

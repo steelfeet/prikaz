@@ -41,6 +41,32 @@ function valid_mark(string $m): bool
 }
 
 // =============================================================================
+// JSON-ответы для AJAX-обработчиков
+// =============================================================================
+
+/**
+ * Клиент просит JSON-ответ (fetch с ajax=1 или Accept: application/json).
+ */
+function wants_json(): bool
+{
+    if (($_POST['ajax'] ?? '') === '1') return true;
+    $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+    return str_contains($accept, 'application/json');
+}
+
+/**
+ * Отдать JSON-ответ и завершить запрос.
+ */
+function json_response(array $data): never
+{
+    if (!headers_sent()) {
+        header('Content-Type: application/json; charset=utf-8');
+    }
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// =============================================================================
 // Надёжная обработка текстовых вставок (массовое добавление тем)
 // =============================================================================
 
@@ -55,21 +81,17 @@ function valid_mark(string $m): bool
  */
 function text_sanitize_utf8(string $raw): array
 {
-    // UTF-8 BOM ломает первую строку: его не видно, но он попадает в начало текста.
     $raw = str_replace("\xEF\xBB\xBF", '', $raw);
 
-    // Быстрая проверка валидности UTF-8: пустой паттерн + модификатор u.
     if ($raw === '' || preg_match('//u', $raw)) {
         return ['text' => $raw, 'repaired' => false];
     }
 
-    // Пытаемся «выкинуть» невалидные байты.
     $fixed = @iconv('UTF-8', 'UTF-8//IGNORE', $raw);
     if (is_string($fixed) && $fixed !== '' && preg_match('//u', $fixed)) {
         return ['text' => $fixed, 'repaired' => true];
     }
 
-    // Фоллбэк: mb_convert_encoding — тоже убирает невалидные байты.
     if (function_exists('mb_convert_encoding')) {
         $fixed = @mb_convert_encoding($raw, 'UTF-8', 'UTF-8');
         if (is_string($fixed) && preg_match('//u', $fixed)) {
@@ -77,20 +99,15 @@ function text_sanitize_utf8(string $raw): array
         }
     }
 
-    // Ничего не вышло — возвращаем пустую строку, caller сам решит.
     return ['text' => '', 'repaired' => true];
 }
 
 /**
  * Нормализует текст темы: убирает управляющие и форматные символы, схлопывает
  * пробелы (включая NBSP) в один, обрезает края.
- *
- * Используется и для новых тем, и для уже сохранённых — чтобы сравнение
- * дубликатов было корректным независимо от того, откуда текст попал в систему.
  */
 function normalize_topic_text(string $topic): string
 {
-    // Если строка не прошла проверку кодировки — сначала выкинем невалидные байты.
     if (!preg_match('//u', $topic)) {
         $topic = text_sanitize_utf8($topic)['text'];
         if ($topic === '') return '';
@@ -119,12 +136,6 @@ function topic_key(string $topic): string
 /**
  * Разбивает многострочный текст на список тем (одна строка — одна тема).
  *
- * Аккуратно относится к «мусору», который приходит при вставке из документов:
- * невалидные байты UTF-8, zero-width и управляющие символы, разделители
- * U+2028/U+2029 (LINE/PARAGRAPH SEPARATOR), которые не режутся обычным \R.
- *
- * Пустые строки и строки без печатных символов отбрасываются.
- *
  * @return array{topics: string[], empty: int, invalid: int}
  */
 function parse_topic_lines(string $raw): array
@@ -135,9 +146,6 @@ function parse_topic_lines(string $raw): array
         return ['topics' => [], 'empty' => 0, 'invalid' => $raw !== '' ? 1 : 0];
     }
 
-    // \R с модификатором /u режет ВСЕ Unicode-разрывы строк,
-    // включая U+2028 (LINE SEPARATOR) и U+2029 (PARAGRAPH SEPARATOR),
-    // которые часто встречаются при копировании из PDF и Word.
     $lines = preg_split('/\R/u', $san['text']);
     if (!is_array($lines)) {
         return ['topics' => [], 'empty' => 0, 'invalid' => 1];
@@ -150,7 +158,6 @@ function parse_topic_lines(string $raw): array
     foreach ($lines as $line) {
         $topic = normalize_topic_text($line);
         if ($topic === '') {
-            // Пустая строка или строка только из пробелов/невидимых символов.
             $empty++;
             continue;
         }
@@ -162,10 +169,6 @@ function parse_topic_lines(string $raw): array
 
 /**
  * Возвращает читаемую метку семестра: «1 семестр», «производственная практика».
- *
- * Для практических семестров добавляет пометку, только если слово
- * «практика» ещё не упомянуто в названии (названия мигрировали из
- * свободного текста, где она уже могла быть указана).
  */
 function semester_label(string $name, int|string $isPractice): string
 {
