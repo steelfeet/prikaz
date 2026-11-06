@@ -514,7 +514,7 @@ if ($action === 'admin_subject_delete') {
     redirect($backUrl);
 }
 
-// ===== УЧЕБНЫЙ ПЛАН: сохранение темы =====
+// ===== ТЕМЫ: сохранение (создание / редактирование) =====
 if ($action === 'admin_curriculum_save') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
 
@@ -523,17 +523,30 @@ if ($action === 'admin_curriculum_save') {
     $ord     = (int) ($_POST['ord'] ?? 0);
     $topic   = trim((string) ($_POST['topic'] ?? ''));
 
+    // Возврат в «Предметы», при наличии — с годом предмета
+    $backUrl = 'index.php?page=admin&section=subjects';
+    if ($subject > 0) {
+        $stmt = $pdo->prepare(
+            'SELECT sm.academic_year_id FROM subjects s
+             JOIN semesters sm ON sm.id = s.semester_id
+             WHERE s.id = :id'
+        );
+        $stmt->execute([':id' => $subject]);
+        $yearId = (int) $stmt->fetchColumn();
+        if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
+    }
+
     if ($subject <= 0) {
         flash_set('danger', 'Предмет не указан.');
-        redirect('index.php?page=admin&section=curriculum');
+        redirect($backUrl);
     }
     if ($topic === '') {
         flash_set('danger', 'Тема не может быть пустой.');
-        redirect('index.php?page=admin&section=curriculum');
+        redirect($backUrl);
     }
     if ($ord <= 0) {
         flash_set('danger', 'Порядковый номер должен быть больше 0.');
-        redirect('index.php?page=admin&section=curriculum');
+        redirect($backUrl);
     }
 
     try {
@@ -558,30 +571,56 @@ if ($action === 'admin_curriculum_save') {
             flash_set('danger', 'Ошибка: ' . $e->getMessage());
         }
     }
-    redirect('index.php?page=admin&section=curriculum');
+    redirect($backUrl);
 }
 
-// ===== УЧЕБНЫЙ ПЛАН: удаление темы =====
+// ===== ТЕМЫ: удаление =====
 if ($action === 'admin_curriculum_delete') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
     $id = (int) ($_POST['id'] ?? 0);
+
+    // Возврат в «Предметы» — найдём год по предмету
+    $backUrl = 'index.php?page=admin&section=subjects';
     try {
+        $stmt = $pdo->prepare(
+            'SELECT sm.academic_year_id
+             FROM curriculum c
+             JOIN subjects s ON s.id = c.subject_id
+             JOIN semesters sm ON sm.id = s.semester_id
+             WHERE c.id = :id'
+        );
+        $stmt->execute([':id' => $id]);
+        $yearId = (int) $stmt->fetchColumn();
+
         $pdo->prepare('DELETE FROM curriculum WHERE id = :id')->execute([':id' => $id]);
         audit_log((int) $currentUser['id'], 'curriculum_delete', 'curriculum', $id);
         flash_set('success', 'Тема удалена.');
+        if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
     } catch (Throwable $e) {
         flash_set('danger', 'Ошибка: ' . $e->getMessage());
     }
-    redirect('index.php?page=admin&section=curriculum');
+    redirect($backUrl);
 }
 
-// ===== УЧЕБНЫЙ ПЛАН: массовое добавление тем =====
+// ===== ТЕМЫ: массовое добавление =====
 if ($action === 'admin_curriculum_bulk_add') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
 
     $subjectId = (int) ($_POST['subject_id'] ?? 0);
     $rawTopics = (string) ($_POST['topics'] ?? '');
-    $backUrl   = 'index.php?page=admin&section=curriculum';
+
+    // Возврат в «Предметы», с годом предмета
+    $backUrl = 'index.php?page=admin&section=subjects';
+    if ($subjectId > 0) {
+        $stmt = $pdo->prepare(
+            'SELECT sm.academic_year_id FROM subjects s
+             JOIN semesters sm ON sm.id = s.semester_id
+             WHERE s.id = :id'
+        );
+        $stmt->execute([':id' => $subjectId]);
+        $yearId = (int) $stmt->fetchColumn();
+        if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
+    }
 
     if ($subjectId <= 0) {
         flash_set('danger', 'Предмет не указан.');

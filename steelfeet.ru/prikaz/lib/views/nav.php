@@ -29,7 +29,7 @@ if ($viewRole !== 'admin') {
 
 // ===== Админ =====
 $section = $_GET['section'] ?? 'academic_years';
-$academicSections = ['academic_years', 'groups', 'subjects', 'curriculum', 'schedule'];
+$academicSections = ['academic_years', 'groups'];
 $isAcademicActive = in_array($section, $academicSections, true);
 ?>
 <style>
@@ -39,7 +39,7 @@ $isAcademicActive = in_array($section, $academicSections, true);
     display: inline-block;
 }
 .mainnav__drop-btn {
-    padding: 0.65rem var(--space-sm, 1rem);
+    padding: 0.5rem 0.75rem;
     font-size: 0.9rem;
     display: inline-flex;
     align-items: center;
@@ -78,7 +78,7 @@ $isAcademicActive = in_array($section, $academicSections, true);
     background: #fff;
     border: 1px solid rgba(26, 26, 26, 0.1);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
-    min-width: 220px;
+    min-width: 200px;
     z-index: 100;
     padding: 6px 0;
     display: none;
@@ -124,14 +124,11 @@ $isAcademicActive = in_array($section, $academicSections, true);
             <a class="<?= $section === 'groups' ? 'active' : '' ?>"
                href="?page=admin&section=groups" role="menuitem">Группы</a>
             <a class="<?= $section === 'subjects' ? 'active' : '' ?>"
-               href="?page=admin&section=subjects" role="menuitem">Предметы</a>
-            <a class="<?= $section === 'curriculum' ? 'active' : '' ?>"
-               href="?page=admin&section=curriculum" role="menuitem">Учебный план</a>
-            <a class="<?= $section === 'schedule' ? 'active' : '' ?>"
-               href="?page=admin&section=schedule" role="menuitem">Расписание</a>
+               href="?page=admin&section=subjects" role="menuitem">Предметы и темы</a>
         </div>
     </div>
 
+    <a class="<?= $section === 'schedule' ? 'active' : '' ?>" href="?page=admin&section=schedule">📆 Расписание</a>
     <a class="<?= $section === 'users'    ? 'active' : '' ?>" href="?page=admin&section=users">👥 Пользователи</a>
     <a class="<?= $section === 'students' ? 'active' : '' ?>" href="?page=admin&section=students">🎒 Студенты</a>
     <a class="<?= $section === 'parents'  ? 'active' : '' ?>" href="?page=admin&section=parents">👪 Родители</a>
@@ -167,19 +164,16 @@ $isAcademicActive = in_array($section, $academicSections, true);
         toggle();
     });
 
-    // Клик по пункту — закрываем перед переходом
     menu.querySelectorAll('a').forEach(function (a) {
         a.addEventListener('click', function () {
             close();
         });
     });
 
-    // Клик вне — закрыть
     document.addEventListener('click', function (e) {
         if (!drop.contains(e.target)) close();
     });
 
-    // Esc — закрыть
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') close();
     });

@@ -175,7 +175,6 @@ $adminSemestersByYear = [];
 $defaultSubjectGroupId = 0;
 $defaultSubjectSemesterId = 0;
 $adminCurrentYearSubjectCount = 0;
-$adminCurriculum = [];
 
 // Расписание
 $adminScheduleYearId = 0;
@@ -326,6 +325,29 @@ if ($viewRole === 'admin') {
     $stmt->execute($params);
     $adminSubjects = $stmt->fetchAll();
 
+    // ===== Темы для каждого предмета =====
+    // Отдельного «Учебного плана» в UI больше нет: темы хранятся в таблице
+    // curriculum с FK на subject_id и показываются под своим предметом.
+    if ($adminSubjects !== []) {
+        $subjectIds = array_map(fn($s) => (int) $s['id'], $adminSubjects);
+        $placeholders = implode(',', array_fill(0, count($subjectIds), '?'));
+        $stmt = $pdo->prepare(
+            "SELECT id, subject_id, ord, topic
+             FROM curriculum
+             WHERE subject_id IN ($placeholders)
+             ORDER BY subject_id, ord"
+        );
+        $stmt->execute($subjectIds);
+        $topicsBySubject = [];
+        foreach ($stmt->fetchAll() as $t) {
+            $topicsBySubject[(int) $t['subject_id']][] = $t;
+        }
+        foreach ($adminSubjects as &$subj) {
+            $subj['topics'] = $topicsBySubject[(int) $subj['id']] ?? [];
+        }
+        unset($subj);
+    }
+
     $adminAllGroups = $pdo->query(
         'SELECT g.id, g.name, g.academic_year_id, ay.name AS year_name
          FROM groups g
@@ -353,33 +375,6 @@ if ($viewRole === 'admin') {
         );
         $stmt->execute([':y' => (int) $adminCurrentYear['id']]);
         $adminCurrentYearSubjectCount = (int) $stmt->fetchColumn();
-    }
-
-    // ===== Учебный план =====
-    $adminCurriculum = [];
-    if ($adminCurrentYear !== null) {
-        $stmt = $pdo->prepare(
-            'SELECT s.id, s.short_name, s.full_name, s.hours,
-                    sm.name AS semester_name, sm.is_practice AS semester_is_practice,
-                    g.name AS group_name
-             FROM subjects s
-             JOIN semesters sm ON sm.id = s.semester_id
-             JOIN groups g     ON g.id = s.group_id
-             WHERE sm.academic_year_id = :y
-             ORDER BY sm.ord, sm.name, g.name, s.short_name'
-        );
-        $stmt->execute([':y' => (int) $adminCurrentYear['id']]);
-        $subjectsRows = $stmt->fetchAll();
-
-        $topicStmt = $pdo->prepare(
-            'SELECT id, ord, topic FROM curriculum WHERE subject_id = :sid ORDER BY ord'
-        );
-        foreach ($subjectsRows as &$subj) {
-            $topicStmt->execute([':sid' => (int) $subj['id']]);
-            $subj['topics'] = $topicStmt->fetchAll();
-        }
-        unset($subj);
-        $adminCurriculum = $subjectsRows;
     }
 
     // ===== Расписание: год + семестр, все группы =====
