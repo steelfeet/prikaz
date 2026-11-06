@@ -29,7 +29,7 @@ if ($viewRole !== 'admin') {
 
 // ===== Админ =====
 $section = $_GET['section'] ?? 'academic_years';
-$academicSections = ['academic_years', 'groups'];
+$academicSections = ['academic_years', 'groups', 'subjects'];
 $isAcademicActive = in_array($section, $academicSections, true);
 ?>
 <style>

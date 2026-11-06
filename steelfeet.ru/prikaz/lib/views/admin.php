@@ -16,6 +16,21 @@ $holidayChip = function (string $iso): string {
     $dow = ['пн','вт','ср','чт','пт','сб','вс'][(int) date('N', $ts) - 1];
     return date('d.m.Y', $ts) . ' (' . $dow . ')';
 };
+
+// Хелпер: подпись группы с номером подгруппы для селекта предмета в расписании.
+// «46 гр.» + sub1 → «46 (1) гр.», sub2 → «46 (2) гр.», group → «46 гр.».
+$groupWithSubgroup = function (string $groupName, string $type): string {
+    $sub = '';
+    if ($type === 'sub1')      $sub = ' (1)';
+    elseif ($type === 'sub2')  $sub = ' (2)';
+    if ($sub === '') return $groupName;
+
+    if (preg_match('/\s*гр\.?\s*$/iu', $groupName, $m, PREG_OFFSET_CAPTURE)) {
+        $pos = (int) $m[0][1];
+        return substr($groupName, 0, $pos) . $sub . substr($groupName, $pos);
+    }
+    return $groupName . $sub;
+};
 ?>
 <div class="workspace workspace--prikaz">
     <?php if ($flash !== null): ?>
@@ -486,7 +501,7 @@ $holidayChip = function (string $iso): string {
                             <label class="pzk-field">
                                 <span class="pzk-field__label">Название группы</span>
                                 <input class="pzk-field__input" type="text" name="name" required
-                                       placeholder="46" autocomplete="off">
+                                       placeholder="46 гр." autocomplete="off">
                             </label>
                             <label class="pzk-field">
                                 <span class="pzk-field__label">Учебный год</span>
@@ -649,6 +664,20 @@ $holidayChip = function (string $iso): string {
                                                                         data-year="<?= (int) $g['academic_year_id'] ?>"
                                                                         <?= (int) $g['id'] === (int) $s['group_id'] ? 'selected' : '' ?>>
                                                                     <?= e($g['name']) ?> · <?= e($g['year_name']) ?>
+                                                                </option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                    </label>
+                                                    <label class="pzk-field">
+                                                        <span class="pzk-field__label">Семестр / Практика</span>
+                                                        <select name="semester_id" required
+                                                                class="pzk-field__input pzk-field__input--sm">
+                                                            <option value="">— выберите семестр —</option>
+                                                            <?php foreach ($adminAllSemesters as $sm): ?>
+                                                                <option value="<?= (int) $sm['id'] ?>"
+                                                                        data-year="<?= (int) $sm['academic_year_id'] ?>"
+                                                                        <?= (int) $sm['id'] === (int) $s['semester_id'] ? 'selected' : '' ?>>
+                                                                    <?= e($sm['name']) ?> · <?= e($sm['year_name']) ?>
                                                                 </option>
                                                             <?php endforeach; ?>
                                                         </select>
@@ -930,8 +959,8 @@ $holidayChip = function (string $iso): string {
                             Семестр: <strong><?= e($adminScheduleSemesterName) ?></strong>.
                         <?php endif; ?>
                         Неделя с <?= e($scheduleDays[1]) ?> по <?= e($scheduleDays[6]) ?>, 9 уроков.
-                        В ячейке — предмет (с указанием группы) и тип занятия.
-                        Расписание одно на семестр, для всех групп.
+                        В ячейке — предмет (с указанием группы и подгруппы) и тип занятия.
+                        Один урок — одна запись. Расписание одно на семестр, для всех групп.
                         Праздничные дни настраиваются в разделе «Учебный год».
                     </p>
                 </div>
@@ -1020,36 +1049,36 @@ $holidayChip = function (string $iso): string {
                                             <td><strong><?= (int) $lessonNum ?></strong></td>
                                             <td style="font-size:0.85rem; color:var(--color-secondary); white-space:nowrap;"><?= e($time) ?></td>
                                             <?php foreach ($scheduleDays as $dayNum => $dayLabel): ?>
+                                                <?php
+                                                    $cells    = $scheduleGrid[$lessonNum][$dayNum] ?? [];
+                                                    $cell     = $cells[0] ?? null;
+                                                    $cellType = $cell['lesson_type'] ?? 'group';
+                                                ?>
                                                 <td class="pzk-schedule-cell">
-                                                    <?php
-                                                        $cells = $scheduleGrid[$lessonNum][$dayNum] ?? [];
-                                                        $cellCount = count($cells);
-                                                    ?>
-                                                    <?php for ($pos = 1; $pos <= max($cellCount + 1, 2); $pos++): ?>
-                                                        <?php $cell = $cells[$pos - 1] ?? null; ?>
-                                                        <?php if ($pos > 1): ?><hr class="pzk-schedule-sep"><?php endif; ?>
-                                                        <div class="pzk-schedule-entry">
-                                                            <select class="pzk-field__input pzk-field__input--sm"
-                                                                    name="cell[<?= (int) $dayNum ?>][<?= (int) $lessonNum ?>][<?= (int) $pos ?>][subject_id]">
-                                                                <option value="">— не задано —</option>
-                                                                <?php foreach ($adminScheduleSubjects as $subj): ?>
-                                                                    <option value="<?= (int) $subj['id'] ?>"
-                                                                            <?= ($cell && (int) $cell['subject_id'] === (int) $subj['id']) ? 'selected' : '' ?>>
-                                                                        <?= e($subj['short_name']) ?> · <?= e($subj['group_name']) ?>
-                                                                    </option>
-                                                                <?php endforeach; ?>
-                                                            </select>
-                                                            <select class="pzk-field__input pzk-field__input--sm"
-                                                                    name="cell[<?= (int) $dayNum ?>][<?= (int) $lessonNum ?>][<?= (int) $pos ?>][lesson_type]">
-                                                                <?php foreach ($scheduleTypes as $typeCode => $typeLabel): ?>
-                                                                    <option value="<?= e($typeCode) ?>"
-                                                                            <?= ($cell && $cell['lesson_type'] === $typeCode) ? 'selected' : '' ?>>
-                                                                        <?= e($typeLabel) ?>
-                                                                    </option>
-                                                                <?php endforeach; ?>
-                                                            </select>
-                                                        </div>
-                                                    <?php endfor; ?>
+                                                    <div class="pzk-schedule-entry">
+                                                        <select class="pzk-field__input pzk-field__input--sm"
+                                                                name="cell[<?= (int) $dayNum ?>][<?= (int) $lessonNum ?>][1][subject_id]">
+                                                            <option value="">— не задано —</option>
+                                                            <?php foreach ($adminScheduleSubjects as $subj): ?>
+                                                                <?php $groupLabel = $groupWithSubgroup((string) $subj['group_name'], (string) $cellType); ?>
+                                                                <option value="<?= (int) $subj['id'] ?>"
+                                                                        data-short="<?= e($subj['short_name']) ?>"
+                                                                        data-group="<?= e($subj['group_name']) ?>"
+                                                                        <?= ($cell && (int) $cell['subject_id'] === (int) $subj['id']) ? 'selected' : '' ?>>
+                                                                    <?= e($subj['short_name']) ?> · <?= e($groupLabel) ?>
+                                                                </option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                        <select class="pzk-field__input pzk-field__input--sm pzk-schedule-type"
+                                                                name="cell[<?= (int) $dayNum ?>][<?= (int) $lessonNum ?>][1][lesson_type]">
+                                                            <?php foreach ($scheduleTypes as $typeCode => $typeLabel): ?>
+                                                                <option value="<?= e($typeCode) ?>"
+                                                                        <?= ($cell && $cell['lesson_type'] === $typeCode) ? 'selected' : '' ?>>
+                                                                    <?= e($typeLabel) ?>
+                                                                </option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                    </div>
                                                 </td>
                                             <?php endforeach; ?>
                                         </tr>
@@ -1062,6 +1091,38 @@ $holidayChip = function (string $iso): string {
                             <button type="submit" class="pzk-btn pzk-btn--primary">Сохранить расписание</button>
                         </div>
                     </form>
+
+                    <script>
+                    (function () {
+                        'use strict';
+
+                        // Подпись группы с номером подгруппы: «46 гр.» + sub1 → «46 (1) гр.».
+                        function groupWithSubgroup(groupName, type) {
+                            var sub = type === 'sub1' ? ' (1)' : (type === 'sub2' ? ' (2)' : '');
+                            if (sub === '') return groupName;
+                            var m = groupName.match(/^([\s\S]*?)(\s*гр\.?\s*)$/i);
+                            if (m) return m[1] + sub + m[2];
+                            return groupName + sub;
+                        }
+
+                        document.querySelectorAll('.pzk-schedule-entry').forEach(function (entry) {
+                            var subjSel = entry.querySelector('select[name$="[subject_id]"]');
+                            var typeSel = entry.querySelector('select[name$="[lesson_type]"]');
+                            if (!subjSel || !typeSel) return;
+
+                            function refresh() {
+                                var type = typeSel.value;
+                                subjSel.querySelectorAll('option[data-group]').forEach(function (opt) {
+                                    var short = opt.getAttribute('data-short') || '';
+                                    var group = opt.getAttribute('data-group') || '';
+                                    opt.textContent = short + ' · ' + groupWithSubgroup(group, type);
+                                });
+                            }
+
+                            typeSel.addEventListener('change', refresh);
+                        });
+                    })();
+                    </script>
                 <?php endif; ?>
             <?php endif; ?>
         </section>

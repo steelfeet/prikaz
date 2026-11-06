@@ -296,6 +296,7 @@ if ($viewRole === 'admin') {
                    sm.name        AS semester_name,
                    sm.is_practice AS semester_is_practice,
                    sm.ord         AS semester_ord,
+                   ay.id          AS academic_year_id,
                    ay.name        AS year_name,
                    ay.is_current  AS year_is_current,
                    g.name         AS group_name

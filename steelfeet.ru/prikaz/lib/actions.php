@@ -764,8 +764,9 @@ if ($action === 'admin_schedule_save') {
                 $subjectId  = (int) ($cellData['subject_id'] ?? 0);
                 $lessonType = trim((string) ($cellData['lesson_type'] ?? ''));
 
-                if ($subjectId <= 0 && $lessonType === '') continue;
-                if ($subjectId <= 0) { $invalid++; continue; }
+                // Пустая ячейка — не ошибка, просто нет предмета. Молча пропускаем.
+                if ($subjectId <= 0) continue;
+
                 if (!isset($subjectsInSemester[$subjectId])) { $invalid++; continue; }
                 if (!isset($validTypes[$lessonType])) { $invalid++; continue; }
 
