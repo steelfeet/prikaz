@@ -4,19 +4,18 @@ declare(strict_types=1);
 /**
  * КТП — Календарно-Тематическое Планирование.
  *
- * Одна тема = один блок. Блок = все занятия одного вида (групповые или
- * подгрупповые) в один день семестра. Праздники пропускаются.
+ * Одна тема = один блок.
  *
- *   - Групповой блок: все group-пары дня. Занимает столько номеров п/п,
- *     сколько group-пар в день. Tariff = число group-пар.
- *   - Подгрупповой блок: все пары sub1 и sub2 дня. Слоты блока = max(пар
- *     sub1, пар sub2) — то есть уроки одной подгруппы. Занимает столько
- *     номеров п/п, сколько слотов. Tariff = пар sub1 + пар sub2.
+ * Блоки дня:
+ *   - Групповые уроки разбиваются на пары (1,2), (3,4), (5,6)…
+ *     Каждая пара = отдельный блок (одна тема). Если в паре 1 урок —
+ *     блок на 1 слот, если 2 — на 2 слота. Tariff = число уроков в паре.
+ *   - Подгрупповые уроки за день объединяются в ОДИН блок (у sub1 и sub2
+ *     тема одна). Слоты = max(уроков sub1, уроков sub2). Tariff = пар sub1
+ *     + пар sub2.
  *
- * В день может быть до двух блоков — групповой и подгрупповой. Порядок
- * внутри дня — по минимальному lesson_num пары блока.
- *
- * Нумерация п/п — сквозная по всем блокам семестра. Тема i = блок i.
+ * В день может быть несколько блоков; порядок — по минимальному lesson_num
+ * пары. Нумерация п/п сквозная по семестру. Тема i = блок i.
  */
 
 /**
@@ -53,28 +52,25 @@ function ktp_lesson_blocks(int $subjectId, ?PDO $pdo = null): array
     $rows = $stmt->fetchAll();
     if ($rows === []) return [];
 
-    $groupPairs = [];
-    $sub1Pairs  = [];
-    $sub2Pairs  = [];
+    // Раскладываем уроки по типу и дню.
+    $groupByDay = [];
+    $sub1ByDay  = [];
+    $sub2ByDay  = [];
     foreach ($rows as $r) {
         $wd = (int) $r['weekday'];
         $ln = (int) $r['lesson_num'];
         $lt = (string) $r['lesson_type'];
         if ($lt === 'group') {
-            $groupPairs[$wd][$ln] = true;
+            $groupByDay[$wd][] = $ln;
         } elseif ($lt === 'sub1') {
-            $sub1Pairs[$wd][$ln] = true;
+            $sub1ByDay[$wd][] = $ln;
         } elseif ($lt === 'sub2') {
-            $sub2Pairs[$wd][$ln] = true;
+            $sub2ByDay[$wd][] = $ln;
         }
     }
-    foreach ([&$groupPairs, &$sub1Pairs, &$sub2Pairs] as &$arr) {
-        foreach ($arr as $wd => $_) {
-            ksort($arr[$wd]);
-            $arr[$wd] = array_keys($arr[$wd]);
-        }
-    }
-    unset($arr);
+    foreach ($groupByDay as $wd => $_) { sort($groupByDay[$wd]); }
+    foreach ($sub1ByDay  as $wd => $_) { sort($sub1ByDay[$wd]); }
+    foreach ($sub2ByDay  as $wd => $_) { sort($sub2ByDay[$wd]); }
 
     $holidaySet = [];
     $stmt = $pdo->prepare('SELECT date FROM holidays WHERE semester_id = :sm');
@@ -97,27 +93,34 @@ function ktp_lesson_blocks(int $subjectId, ?PDO $pdo = null): array
 
         $dayBlocks = [];
 
-        if (!empty($groupPairs[$wd])) {
-            $count = count($groupPairs[$wd]);
-            $dayBlocks[] = [
-                'kind'   => 'group',
-                'min_ln' => (int) $groupPairs[$wd][0],
-                'slots'  => $count,
-                'tariff' => $count,
-                'date'   => $date,
-            ];
+        // Групповые — разбить по парам (1,2), (3,4), (5,6)…
+        if (!empty($groupByDay[$wd])) {
+            $byPair = [];
+            foreach ($groupByDay[$wd] as $ln) {
+                $pairId = intdiv($ln - 1, 2);
+                $byPair[$pairId][] = $ln;
+            }
+            ksort($byPair);
+            foreach ($byPair as $pairId => $lns) {
+                $count = count($lns);
+                $dayBlocks[] = [
+                    'kind'   => 'group',
+                    'min_ln' => (int) min($lns),
+                    'slots'  => $count,
+                    'tariff' => $count,
+                    'date'   => $date,
+                ];
+            }
         }
 
-        $s1 = $sub1Pairs[$wd] ?? [];
-        $s2 = $sub2Pairs[$wd] ?? [];
+        // Подгруппы — один блок на весь день
+        $s1 = $sub1ByDay[$wd] ?? [];
+        $s2 = $sub2ByDay[$wd] ?? [];
         if ($s1 !== [] || $s2 !== []) {
             $slots  = max(count($s1), count($s2));
             $tariff = count($s1) + count($s2);
-            $minLn  = PHP_INT_MAX;
-            if ($s1 !== []) $minLn = min($minLn, (int) $s1[0]);
-            if ($s2 !== []) $minLn = min($minLn, (int) $s2[0]);
-            if ($minLn === PHP_INT_MAX) $minLn = 1;
-
+            $allLn  = array_merge($s1, $s2);
+            $minLn  = $allLn !== [] ? (int) min($allLn) : 1;
             $dayBlocks[] = [
                 'kind'   => 'sub',
                 'min_ln' => $minLn,
@@ -367,24 +370,24 @@ function ktp_render_block(int $subjectId): string
     $stmt->execute([':s' => $subjectId]);
     $ktp = $stmt->fetchAll();
 
-    $blocks     = ktp_lesson_blocks($subjectId, $pdo);
-    $ktpLayout  = $ktp !== [] ? ktp_layout($subjectId, $pdo, $blocks) : [];
-    $ktpHours   = ktp_hours_from_layout($ktpLayout);
-    $ktpTariff  = ktp_tariff_total($blocks);
+    $blocks      = ktp_lesson_blocks($subjectId, $pdo);
+    $ktpLayout   = $ktp !== [] ? ktp_layout($subjectId, $pdo, $blocks) : [];
+    $ktpHours    = ktp_hours_from_layout($ktpLayout);
+    $ktpTariff   = ktp_tariff_total($blocks);
     $blocksCount = count($blocks);
 
     $s = [
-        'id'              => (int) $row['id'],
-        'short_name'      => (string) $row['short_name'],
-        'full_name'       => (string) $row['full_name'],
-        'hours'           => (int) $row['hours'],
-        'group_name'      => (string) $row['group_name'],
-        'year_name'       => (string) $row['year_name'],
-        'topics'          => $topics,
-        'ktp'             => $ktp,
-        'ktp_layout'      => $ktpLayout,
-        'ktp_hours'       => $ktpHours,
-        'ktp_tariff'      => $ktpTariff,
+        'id'               => (int) $row['id'],
+        'short_name'       => (string) $row['short_name'],
+        'full_name'        => (string) $row['full_name'],
+        'hours'            => (int) $row['hours'],
+        'group_name'       => (string) $row['group_name'],
+        'year_name'        => (string) $row['year_name'],
+        'topics'           => $topics,
+        'ktp'              => $ktp,
+        'ktp_layout'       => $ktpLayout,
+        'ktp_hours'        => $ktpHours,
+        'ktp_tariff'       => $ktpTariff,
         'ktp_blocks_count' => $blocksCount,
     ];
 

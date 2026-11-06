@@ -7,6 +7,8 @@ declare(strict_types=1);
  * Ожидает $s — массив с полями:
  *   id, short_name, full_name, hours, group_name, year_name,
  *   topics, ktp, ktp_layout, ktp_hours, ktp_tariff, ktp_blocks_count
+ *
+ * Дата в таблице склеивается через rowspan для всех блоков одного дня.
  */
 
 $sTopics     = $s['topics']     ?? [];
@@ -16,6 +18,26 @@ $sKtpHours   = (int) ($s['ktp_hours']  ?? 0);
 $sKtpTariff  = (int) ($s['ktp_tariff'] ?? 0);
 $sPlanHours  = (int) $s['hours'];
 $sHoursMatch = ($sPlanHours > 0 && $sKtpHours === $sPlanHours);
+
+// Только размещённые строки — по ним строим вывод и считаем rowspan для дат.
+$renderRows = [];
+foreach ($sKtpLayout as $row) {
+    if (!empty($row['placed'])) $renderRows[] = $row;
+}
+
+// Карта: индекс первой строки группы -> rowspan. Все блоки одного дня идут подряд.
+$dateSpans = [];
+$totalRows = count($renderRows);
+$i = 0;
+while ($i < $totalRows) {
+    $date  = $renderRows[$i]['date'];
+    $start = $i;
+    while ($i < $totalRows && $renderRows[$i]['date'] === $date) $i++;
+    $dateSpans[$start] = $i - $start;
+}
+
+$unplaced = 0;
+foreach ($sKtpLayout as $row) if (empty($row['placed'])) $unplaced++;
 ?>
 <details class="pzk-subject-ktp" id="ktp-<?= (int) $s['id'] ?>">
     <summary class="pzk-subject-topics__summary">
@@ -64,7 +86,7 @@ $sHoursMatch = ($sPlanHours > 0 && $sKtpHours === $sPlanHours);
                 </div>
             </div>
 
-            <?php if ($sKtpLayout === []): ?>
+            <?php if ($renderRows === []): ?>
                 <p class="pzk-form__hint" style="margin:6px 0;">
                     КТП пусто.
                 </p>
@@ -81,8 +103,7 @@ $sHoursMatch = ($sPlanHours > 0 && $sKtpHours === $sPlanHours);
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($sKtpLayout as $row): ?>
-                                <?php if (!$row['placed']) continue; ?>
+                            <?php foreach ($renderRows as $i => $row): ?>
                                 <tr>
                                     <td>
                                         <?php if ($row['num_start'] === $row['num_end']): ?>
@@ -91,7 +112,13 @@ $sHoursMatch = ($sPlanHours > 0 && $sKtpHours === $sPlanHours);
                                             <?= (int) $row['num_start'] ?>-<?= (int) $row['num_end'] ?>
                                         <?php endif; ?>
                                     </td>
-                                    <td><?= e(date('d.m.Y', strtotime($row['date']))) ?></td>
+                                    <?php if (isset($dateSpans[$i])): ?>
+                                        <?php $span = $dateSpans[$i]; ?>
+                                        <td <?= $span > 1 ? 'rowspan="' . $span . '"' : '' ?>
+                                            style="vertical-align:middle; white-space:nowrap;">
+                                            <?= e(date('d.m.Y', strtotime($row['date']))) ?>
+                                        </td>
+                                    <?php endif; ?>
                                     <td><?= e($row['topic']) ?></td>
                                     <td><?= e($row['kind_label']) ?></td>
                                     <td class="pzk-table__actions">
@@ -112,10 +139,6 @@ $sHoursMatch = ($sPlanHours > 0 && $sKtpHours === $sPlanHours);
                         </tbody>
                     </table>
                 </div>
-                <?php
-                    $unplaced = 0;
-                    foreach ($sKtpLayout as $row) if (!$row['placed']) $unplaced++;
-                ?>
                 <?php if ($unplaced > 0): ?>
                     <p class="pzk-form__hint" style="margin:6px 0; color:#b91c1c;">
                         ⚠ Тем не хватает блоков в семестре: <?= $unplaced ?> тем(ы) не показаны.
