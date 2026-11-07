@@ -14,14 +14,19 @@ declare(strict_types=1);
  *     тема одна). Слоты = max(уроков sub1, уроков sub2). Tariff = пар sub1
  *     + пар sub2.
  *
- * В день может быть несколько блоков; порядок — по минимальному lesson_num
- * пары. Нумерация п/п сквозная по семестру. Тема i = блок i.
+ * Шапка КТП:
+ *   - Часов по плану: subjects.hours
+ *   - По тарификации: sum(tariff) по ЗАНЯТЫМ блокам — аудиторные часы КТП
+ *   - В КТП: sum(slots) по ЗАНЯТЫМ блокам — количество учебных пар КТП
+ *   - «Совпадает», когда Часов по плану == По тарификации
+ *
+ * По тарификации / В КТП ≤ 2 всегда (все блоки подгрупповые).
  */
 
 /**
  * Список блоков предмета по семестру.
  *
- * @return list<array{num_start:int,num_end:int,date:string,kind:string,tariff:int}>
+ * @return list<array{num_start:int,num_end:int,date:string,kind:string,tariff:int,slots:int}>
  */
 function ktp_lesson_blocks(int $subjectId, ?PDO $pdo = null): array
 {
@@ -52,7 +57,6 @@ function ktp_lesson_blocks(int $subjectId, ?PDO $pdo = null): array
     $rows = $stmt->fetchAll();
     if ($rows === []) return [];
 
-    // Раскладываем уроки по типу и дню.
     $groupByDay = [];
     $sub1ByDay  = [];
     $sub2ByDay  = [];
@@ -93,7 +97,6 @@ function ktp_lesson_blocks(int $subjectId, ?PDO $pdo = null): array
 
         $dayBlocks = [];
 
-        // Групповые — разбить по парам (1,2), (3,4), (5,6)…
         if (!empty($groupByDay[$wd])) {
             $byPair = [];
             foreach ($groupByDay[$wd] as $ln) {
@@ -113,7 +116,6 @@ function ktp_lesson_blocks(int $subjectId, ?PDO $pdo = null): array
             }
         }
 
-        // Подгруппы — один блок на весь день
         $s1 = $sub1ByDay[$wd] ?? [];
         $s2 = $sub2ByDay[$wd] ?? [];
         if ($s1 !== [] || $s2 !== []) {
@@ -142,6 +144,7 @@ function ktp_lesson_blocks(int $subjectId, ?PDO $pdo = null): array
                 'num_end'   => $numEnd,
                 'date'      => (string) $b['date'],
                 'kind'      => (string) $b['kind'],
+                'slots'     => $slots,
                 'tariff'    => (int) $b['tariff'],
             ];
             $counter = $numEnd;
@@ -152,12 +155,6 @@ function ktp_lesson_blocks(int $subjectId, ?PDO $pdo = null): array
 
 /**
  * Привязывает темы КТП к блокам: тема i → блок i.
- *
- * @return list<array{
- *   id:int, topic:string, placed:bool,
- *   num_start:int, num_end:int, date:string,
- *   kind:string, kind_label:string, tariff:int
- * }>
  */
 function ktp_layout(int $subjectId, ?PDO $pdo = null, ?array $blocks = null): array
 {
@@ -185,6 +182,7 @@ function ktp_layout(int $subjectId, ?PDO $pdo = null, ?array $blocks = null): ar
                 'date'       => '',
                 'kind'       => '',
                 'kind_label' => '',
+                'slots'      => 0,
                 'tariff'     => 0,
             ];
             continue;
@@ -199,6 +197,7 @@ function ktp_layout(int $subjectId, ?PDO $pdo = null, ?array $blocks = null): ar
             'date'       => (string) $b['date'],
             'kind'       => (string) $b['kind'],
             'kind_label' => ktp_kind_label((string) $b['kind']),
+            'slots'      => (int) $b['slots'],
             'tariff'     => (int) $b['tariff'],
         ];
     }
@@ -206,21 +205,25 @@ function ktp_layout(int $subjectId, ?PDO $pdo = null, ?array $blocks = null): ar
 }
 
 /**
- * Тарификационные часы по всем блокам семестра (не зависит от КТП).
+ * Аудиторные часы КТП: sum(tariff) по занятым блокам.
  */
-function ktp_tariff_total(?array $blocks): int
-{
-    return (int) array_sum(array_column($blocks, 'tariff'));
-}
-
-/**
- * Часы «В КТП»: сумма tariff по блокам, занятым темами.
- */
-function ktp_hours_from_layout(array $layout): int
+function ktp_tariff_from_layout(array $layout): int
 {
     $sum = 0;
     foreach ($layout as $row) {
         if (!empty($row['placed'])) $sum += (int) $row['tariff'];
+    }
+    return $sum;
+}
+
+/**
+ * Количество учебных пар КТП: sum(slots) по занятым блокам.
+ */
+function ktp_slots_from_layout(array $layout): int
+{
+    $sum = 0;
+    foreach ($layout as $row) {
+        if (!empty($row['placed'])) $sum += (int) $row['slots'];
     }
     return $sum;
 }
@@ -260,7 +263,6 @@ function ktp_generate(int $subjectId, ?PDO $pdo = null): void
 
 /**
  * Дублировать текущую тему на следующий блок.
- * Вставляет новую запись с тем же названием weight=1 сразу после текущей.
  */
 function ktp_add_more(int $entryId, ?PDO $pdo = null): void
 {
@@ -372,8 +374,8 @@ function ktp_render_block(int $subjectId): string
 
     $blocks      = ktp_lesson_blocks($subjectId, $pdo);
     $ktpLayout   = $ktp !== [] ? ktp_layout($subjectId, $pdo, $blocks) : [];
-    $ktpHours    = ktp_hours_from_layout($ktpLayout);
-    $ktpTariff   = ktp_tariff_total($blocks);
+    $ktpTariff   = ktp_tariff_from_layout($ktpLayout);
+    $ktpSlots    = ktp_slots_from_layout($ktpLayout);
     $blocksCount = count($blocks);
 
     $s = [
@@ -386,8 +388,8 @@ function ktp_render_block(int $subjectId): string
         'topics'           => $topics,
         'ktp'              => $ktp,
         'ktp_layout'       => $ktpLayout,
-        'ktp_hours'        => $ktpHours,
         'ktp_tariff'       => $ktpTariff,
+        'ktp_slots'        => $ktpSlots,
         'ktp_blocks_count' => $blocksCount,
     ];
 

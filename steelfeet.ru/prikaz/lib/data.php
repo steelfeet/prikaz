@@ -325,6 +325,10 @@ if ($viewRole === 'admin') {
     $adminSubjects = $stmt->fetchAll();
 
     // ===== Темы и КТП для каждого предмета =====
+    // Отдельного «Учебного плана» в UI больше нет: темы хранятся в таблице
+    // curriculum с FK на subject_id и показываются под своим предметом.
+    // КТП хранится в ktp_entries: одна строка на тему. Блоки (пары/подгруппы),
+    // номера п/п и тарификация вычисляются на лету через ktp_lesson_blocks().
     if ($adminSubjects !== []) {
         $subjectIds   = array_map(fn($s) => (int) $s['id'], $adminSubjects);
         $placeholders = implode(',', array_fill(0, count($subjectIds), '?'));
@@ -360,14 +364,15 @@ if ($viewRole === 'admin') {
 
             $blocks = ktp_lesson_blocks($sid, $pdo);
             $subj['ktp_blocks_count'] = count($blocks);
-            $subj['ktp_tariff']       = ktp_tariff_total($blocks);
 
             if ($subj['ktp'] !== []) {
                 $subj['ktp_layout'] = ktp_layout($sid, $pdo, $blocks);
-                $subj['ktp_hours']  = ktp_hours_from_layout($subj['ktp_layout']);
+                $subj['ktp_tariff'] = ktp_tariff_from_layout($subj['ktp_layout']);
+                $subj['ktp_slots']  = ktp_slots_from_layout($subj['ktp_layout']);
             } else {
                 $subj['ktp_layout'] = [];
-                $subj['ktp_hours']  = 0;
+                $subj['ktp_tariff'] = 0;
+                $subj['ktp_slots']  = 0;
             }
         }
         unset($subj);

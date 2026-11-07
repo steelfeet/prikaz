@@ -6,7 +6,7 @@ declare(strict_types=1);
  *
  * Ожидает $s — массив с полями:
  *   id, short_name, full_name, hours, group_name, year_name,
- *   topics, ktp, ktp_layout, ktp_hours, ktp_tariff, ktp_blocks_count
+ *   topics, ktp, ktp_layout, ktp_tariff, ktp_slots, ktp_blocks_count
  *
  * Дата в таблице склеивается через rowspan для всех блоков одного дня.
  */
@@ -14,18 +14,16 @@ declare(strict_types=1);
 $sTopics     = $s['topics']     ?? [];
 $sKtp        = $s['ktp']        ?? [];
 $sKtpLayout  = $s['ktp_layout'] ?? [];
-$sKtpHours   = (int) ($s['ktp_hours']  ?? 0);
 $sKtpTariff  = (int) ($s['ktp_tariff'] ?? 0);
+$sKtpSlots   = (int) ($s['ktp_slots']  ?? 0);
 $sPlanHours  = (int) $s['hours'];
-$sHoursMatch = ($sPlanHours > 0 && $sKtpHours === $sPlanHours);
+$sHoursMatch = ($sPlanHours > 0 && $sKtpTariff === $sPlanHours);
 
-// Только размещённые строки — по ним строим вывод и считаем rowspan для дат.
 $renderRows = [];
 foreach ($sKtpLayout as $row) {
     if (!empty($row['placed'])) $renderRows[] = $row;
 }
 
-// Карта: индекс первой строки группы -> rowspan. Все блоки одного дня идут подряд.
 $dateSpans = [];
 $totalRows = count($renderRows);
 $i = 0;
@@ -42,7 +40,7 @@ foreach ($sKtpLayout as $row) if (empty($row['placed'])) $unplaced++;
 <details class="pzk-subject-ktp" id="ktp-<?= (int) $s['id'] ?>">
     <summary class="pzk-subject-topics__summary">
         <?php if ($sKtp !== []): ?>
-            📅 КТП (<?= $sKtpHours ?> ч.) — развернуть
+            📅 КТП (<?= $sKtpTariff ?> ч.) — развернуть
         <?php else: ?>
             📅 КТП — не сгенерировано
         <?php endif; ?>
@@ -70,7 +68,7 @@ foreach ($sKtpLayout as $row) if (empty($row['placed'])) $unplaced++;
                 <span class="pzk-ktp__hours">
                     Часов по плану: <strong><?= $sPlanHours ?></strong>
                     / По тарификации: <strong><?= $sKtpTariff ?></strong>
-                    / В КТП: <strong><?= $sKtpHours ?></strong>
+                    / В КТП: <strong><?= $sKtpSlots ?></strong>
                     <?php if ($sHoursMatch): ?>
                         <span class="pzk-ktp__match-tag">✓ совпадает</span>
                     <?php endif; ?>
