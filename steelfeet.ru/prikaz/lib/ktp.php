@@ -15,10 +15,11 @@ declare(strict_types=1);
  *     + пар sub2.
  *
  * Шапка КТП:
- *   - Часов по плану: subjects.hours
+ *   - Часов по учебному плану: subjects.hours
  *   - По тарификации: sum(tariff) по ЗАНЯТЫМ блокам — аудиторные часы КТП
  *   - В КТП: sum(slots) по ЗАНЯТЫМ блокам — количество учебных пар КТП
- *   - «Совпадает», когда Часов по плану == По тарификации
+ *   - Фактически часов: subjects.hours минус часы, попавшие на праздники
+ *   - Праздники: список дат с числом отнятых часов
  *
  * По тарификации / В КТП ≤ 2 всегда (все блоки подгрупповые).
  */
@@ -151,6 +152,105 @@ function ktp_lesson_blocks(int $subjectId, ?PDO $pdo = null): array
         }
     }
     return $blocks;
+}
+
+/**
+ * Часы, попавшие на праздничные дни.
+ *
+ * Возвращает ассоциативный массив [YYYY-MM-DD => slots_in_day] для каждого
+ * праздника семестра, на который у предмета есть занятия (если бы он не
+ * был праздником). slots_in_day = количество учебных пар (номеров п/п),
+ * которые бы приходились на этот день. Считается так же, как слоты в
+ * ktp_lesson_blocks: group — по парам (1,2),(3,4)…; sub — max(sub1, sub2).
+ *
+ * @return array<string,int>
+ */
+function ktp_holiday_losses(int $subjectId, ?PDO $pdo = null): array
+{
+    if ($pdo === null) $pdo = db();
+
+    $stmt = $pdo->prepare(
+        'SELECT s.semester_id, ay.start_date, ay.end_date
+         FROM subjects s
+         JOIN semesters sm      ON sm.id = s.semester_id
+         JOIN academic_years ay ON ay.id = sm.academic_year_id
+         WHERE s.id = :id'
+    );
+    $stmt->execute([':id' => $subjectId]);
+    $subj = $stmt->fetch();
+    if (!$subj) return [];
+
+    $semesterId = (int) $subj['semester_id'];
+    $startDate  = (string) $subj['start_date'];
+    $endDate    = (string) $subj['end_date'];
+
+    $stmt = $pdo->prepare(
+        'SELECT weekday, lesson_num, lesson_type
+         FROM schedule_entries
+         WHERE subject_id = :s
+         ORDER BY weekday, lesson_num'
+    );
+    $stmt->execute([':s' => $subjectId]);
+    $rows = $stmt->fetchAll();
+    if ($rows === []) return [];
+
+    $groupByDay = [];
+    $sub1ByDay  = [];
+    $sub2ByDay  = [];
+    foreach ($rows as $r) {
+        $wd = (int) $r['weekday'];
+        $ln = (int) $r['lesson_num'];
+        $lt = (string) $r['lesson_type'];
+        if ($lt === 'group') {
+            $groupByDay[$wd][] = $ln;
+        } elseif ($lt === 'sub1') {
+            $sub1ByDay[$wd][] = $ln;
+        } elseif ($lt === 'sub2') {
+            $sub2ByDay[$wd][] = $ln;
+        }
+    }
+
+    $holidaySet = [];
+    $stmt = $pdo->prepare('SELECT date FROM holidays WHERE semester_id = :sm');
+    $stmt->execute([':sm' => $semesterId]);
+    foreach ($stmt->fetchAll() as $h) {
+        $holidaySet[(string) $h['date']] = true;
+    }
+    if ($holidaySet === []) return [];
+
+    $startTs = strtotime($startDate);
+    $endTs   = strtotime($endDate);
+    if ($startTs === false || $endTs === false || $endTs < $startTs) return [];
+
+    $losses = [];
+    for ($ts = $startTs; $ts <= $endTs; $ts += 86400) {
+        $date = date('Y-m-d', $ts);
+        if (!isset($holidaySet[$date])) continue;
+        $wd = (int) date('N', $ts);
+
+        $daySlots = 0;
+
+        if (!empty($groupByDay[$wd])) {
+            $byPair = [];
+            foreach ($groupByDay[$wd] as $ln) {
+                $byPair[intdiv($ln - 1, 2)][] = $ln;
+            }
+            foreach ($byPair as $lns) {
+                $daySlots += count($lns);
+            }
+        }
+
+        $s1 = $sub1ByDay[$wd] ?? [];
+        $s2 = $sub2ByDay[$wd] ?? [];
+        if ($s1 !== [] || $s2 !== []) {
+            $daySlots += max(count($s1), count($s2));
+        }
+
+        if ($daySlots > 0) {
+            $losses[$date] = $daySlots;
+        }
+    }
+    return $losses;
 }
 
 /**
@@ -376,21 +476,25 @@ function ktp_render_block(int $subjectId): string
     $ktpLayout   = $ktp !== [] ? ktp_layout($subjectId, $pdo, $blocks) : [];
     $ktpTariff   = ktp_tariff_from_layout($ktpLayout);
     $ktpSlots    = ktp_slots_from_layout($ktpLayout);
+    $holidayLoss = ktp_holiday_losses($subjectId, $pdo);
+    $factHours   = max(0, (int) $row['hours'] - array_sum($holidayLoss));
     $blocksCount = count($blocks);
 
     $s = [
-        'id'               => (int) $row['id'],
-        'short_name'       => (string) $row['short_name'],
-        'full_name'        => (string) $row['full_name'],
-        'hours'            => (int) $row['hours'],
-        'group_name'       => (string) $row['group_name'],
-        'year_name'        => (string) $row['year_name'],
-        'topics'           => $topics,
-        'ktp'              => $ktp,
-        'ktp_layout'       => $ktpLayout,
-        'ktp_tariff'       => $ktpTariff,
-        'ktp_slots'        => $ktpSlots,
-        'ktp_blocks_count' => $blocksCount,
+        'id'                => (int) $row['id'],
+        'short_name'        => (string) $row['short_name'],
+        'full_name'         => (string) $row['full_name'],
+        'hours'             => (int) $row['hours'],
+        'group_name'        => (string) $row['group_name'],
+        'year_name'         => (string) $row['year_name'],
+        'topics'            => $topics,
+        'ktp'               => $ktp,
+        'ktp_layout'        => $ktpLayout,
+        'ktp_tariff'        => $ktpTariff,
+        'ktp_slots'         => $ktpSlots,
+        'ktp_fact_hours'    => $factHours,
+        'ktp_holiday_losses'=> $holidayLoss,
+        'ktp_blocks_count'  => $blocksCount,
     ];
 
     ob_start();

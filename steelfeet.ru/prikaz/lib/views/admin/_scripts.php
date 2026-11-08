@@ -24,38 +24,56 @@ declare(strict_types=1);
         });
     });
 
-    // ===== «Редактировать» в столбце «Действия» открывает inline-<details> =====
-    // Форма «Добавить ниже» открывается нативно — её summary в ячейке «Тема».
-    // Здесь же — закрываем соседнюю форму при открытии, чтобы не было двух
-    // раскрытых сразу.
-    function closeSiblingForms(details) {
-        var cell = details.parentElement;
-        if (!cell) return;
-        cell.querySelectorAll('details.pzk-topic-edit[open]').forEach(function (other) {
-            if (other !== details) other.open = false;
+    // ===== Inline-редактирование =====
+    // «Редактировать» предмета открывает <details> в отдельной строке под
+    // предметом. «Редактировать» темы — в её ячейке. Одновременно открыта
+    // только одна форма каждого типа.
+
+    function openInline(id, focusSelector, groupSelector) {
+        var d = document.getElementById(id);
+        if (!d) return;
+        document.querySelectorAll(groupSelector + '[open]').forEach(function (other) {
+            if (other !== d) other.open = false;
         });
+        d.open = true;
+        var field = d.querySelector(focusSelector);
+        if (field) field.focus();
+        d.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     document.addEventListener('click', function (e) {
+        var subjBtn = e.target.closest('[data-open-subject-edit]');
+        if (subjBtn) {
+            openInline(
+                subjBtn.getAttribute('data-open-subject-edit'),
+                'input:not([type="hidden"]), select, textarea',
+                'details.pzk-subject-edit'
+            );
+            return;
+        }
+
         var editBtn = e.target.closest('[data-open-topic-edit]');
-        if (!editBtn) return;
-        var id = editBtn.getAttribute('data-open-topic-edit');
-        var d = document.getElementById(id);
-        if (!d) return;
-        closeSiblingForms(d);
-        d.open = true;
-        var field = d.querySelector('textarea[name="topic"], input[name="topic"]');
-        if (field) field.focus();
-        d.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (editBtn) {
+            openInline(
+                editBtn.getAttribute('data-open-topic-edit'),
+                'textarea[name="topic"], input[name="topic"]',
+                'details.pzk-topic-edit'
+            );
+        }
     });
 
-    // Нативно открываемые формы (summary «Добавить ниже» и сам текст темы)
-    // тоже закрывают соседнюю форму.
+    // При нативном открытии <details> (summary-текст темы или «+ Добавить
+    // ниже») — закрываем соседнюю форму в той же ячейке, чтобы не было двух
+    // раскрытых сразу.
     document.addEventListener('toggle', function (e) {
         var d = e.target;
         if (!d.classList || !d.classList.contains('pzk-topic-edit')) return;
         if (!d.open) return;
-        closeSiblingForms(d);
+        var cell = d.parentElement;
+        if (!cell) return;
+        cell.querySelectorAll('details.pzk-topic-edit[open]').forEach(function (other) {
+            if (other !== d) other.open = false;
+        });
     }, true);
 
     // ===== Sticky-шапка КТП =====

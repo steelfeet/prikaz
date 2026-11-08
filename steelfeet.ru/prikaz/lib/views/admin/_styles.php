@@ -28,6 +28,9 @@ declare(strict_types=1);
 }
 .pzk-table-wrap > .pzk-table { border: none; }
 
+/* В секции «Предметы» обёртка идёт без своего overflow, чтобы
+   sticky-шапка КТП цеплялась к viewport, а не к scroll-контейнеру.
+   На узких экранах (см. media query) overflow возвращается. */
 .pzk-table-wrap--subjects {
     overflow: visible;
 }
@@ -533,6 +536,30 @@ declare(strict_types=1);
     font-size: 0.9rem;
 }
 
+/* ===== Строка редактирования предмета ===== */
+.pzk-subject-edit-row > td {
+    padding: 0 !important;
+    background: #fbf7ec;
+    border-bottom: 1px solid rgba(26, 26, 26, 0.1);
+}
+.pzk-subject-edit > summary {
+    display: none;
+}
+.pzk-subject-edit__form {
+    padding: 12px 14px;
+    background: #fbf7ec;
+    border-left: 3px solid #8b6914;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.pzk-subject-edit__actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 8px;
+    border-top: 1px solid #e8dcc0;
+}
+
 /* ===== Темы под предметом ===== */
 .pzk-topics-row > td {
     padding: 0 !important;
@@ -713,6 +740,27 @@ declare(strict_types=1);
     font-size: 0.72rem;
     font-weight: 600;
 }
+.pzk-ktp__match-value {
+    display: inline-block;
+    background: rgba(22, 163, 74, 0.14);
+    color: #15803d;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 700;
+}
+.pzk-ktp__match-value strong {
+    font-weight: 700;
+}
+.pzk-ktp__holidays {
+    font-size: 0.85rem;
+    color: #b91c1c;
+    font-family: 'Inter', sans-serif;
+    padding: 2px 8px;
+    background: rgba(220, 38, 38, 0.06);
+    border-left: 3px solid #dc2626;
+    border-radius: 2px;
+    white-space: normal;
+}
 .pzk-ktp-table-wrap {
     overflow: visible;
     border: 1px solid rgba(26, 26, 26, 0.1);
@@ -815,5 +863,9 @@ declare(strict_types=1);
     .pzk-sem-card__title { font-size: 1.6rem; }
     .pzk-holiday-form { flex-direction: column; align-items: stretch; }
     .pzk-holiday-form .pzk-field { flex: 1 1 auto !important; }
+
+    .pzk-subject-edit__form { padding: 10px 12px; }
+    .pzk-subject-edit__actions { justify-content: stretch; }
+    .pzk-subject-edit__actions .pzk-btn { width: 100%; justify-content: center; }
 }
 </style>

@@ -6,21 +6,28 @@ declare(strict_types=1);
  *
  * Ожидает $s — массив с полями:
  *   id, short_name, full_name, hours, group_name, year_name,
- *   topics, ktp, ktp_layout, ktp_tariff, ktp_slots, ktp_blocks_count
+ *   topics, ktp, ktp_layout, ktp_tariff, ktp_slots,
+ *   ktp_fact_hours, ktp_holiday_losses, ktp_blocks_count
  *
- * В <summary> — сколько получается по КТП ($sKtpSlots, учебные пары
- * по занятым блокам).
- * В шапке: «Часов по плану / По тарификации / В КТП».
- * Дата в таблице склеивается через rowspan для всех блоков одного дня.
+ * В шапке: «Часов по учебному плану / По тарификации / В КТП /
+ * Фактически часов», затем — список праздников с отнятыми часами.
+ *
+ * При совпадении «В КТП» и «Фактически часов» оба значения подсвечиваются
+ * зелёным и делаются полужирными.
  */
 
-$sTopics     = $s['topics']     ?? [];
-$sKtp        = $s['ktp']        ?? [];
-$sKtpLayout  = $s['ktp_layout'] ?? [];
-$sKtpTariff  = (int) ($s['ktp_tariff'] ?? 0);
-$sKtpSlots   = (int) ($s['ktp_slots']  ?? 0);
-$sPlanHours  = (int) $s['hours'];
-$sHoursMatch = ($sPlanHours > 0 && $sKtpTariff === $sPlanHours);
+$sTopics        = $s['topics']             ?? [];
+$sKtp           = $s['ktp']                ?? [];
+$sKtpLayout     = $s['ktp_layout']         ?? [];
+$sKtpTariff     = (int) ($s['ktp_tariff']  ?? 0);
+$sKtpSlots      = (int) ($s['ktp_slots']   ?? 0);
+$sPlanHours     = (int) $s['hours'];
+$sFactHours     = (int) ($s['ktp_fact_hours']     ?? $sPlanHours);
+$sHolidayLosses = $s['ktp_holiday_losses'] ?? [];
+$sHoursMatch    = ($sPlanHours > 0 && $sKtpTariff === $sPlanHours);
+
+// Совпадение «В КТП» (учебные пары) и «Фактически часов» (план минус праздники)
+$sSlotsFactMatch = ($sKtpSlots > 0 && $sKtpSlots === $sFactHours);
 
 $renderRows = [];
 foreach ($sKtpLayout as $row) {
@@ -69,13 +76,26 @@ foreach ($sKtpLayout as $row) if (empty($row['placed'])) $unplaced++;
             <div class="pzk-ktp__head <?= $sHoursMatch ? 'pzk-ktp__head--match' : '' ?>">
                 <span class="pzk-ktp__title">📅 КТП</span>
                 <span class="pzk-ktp__hours">
-                    Часов по плану: <strong><?= $sPlanHours ?></strong>
+                    Часов по учебному плану: <strong><?= $sPlanHours ?></strong>
                     / По тарификации: <strong><?= $sKtpTariff ?></strong>
-                    / В КТП: <strong><?= $sKtpSlots ?></strong>
+                    / <span class="<?= $sSlotsFactMatch ? 'pzk-ktp__match-value' : '' ?>">В КТП: <strong><?= $sKtpSlots ?></strong></span>
+                    / <span class="<?= $sSlotsFactMatch ? 'pzk-ktp__match-value' : '' ?>">Фактически часов: <strong><?= $sFactHours ?></strong></span>
                     <?php if ($sHoursMatch): ?>
                         <span class="pzk-ktp__match-tag">✓ совпадает</span>
                     <?php endif; ?>
                 </span>
+                <?php if ($sHolidayLosses !== []): ?>
+                    <span class="pzk-ktp__holidays">
+                        Праздники:
+                        <?php
+                            $parts = [];
+                            foreach ($sHolidayLosses as $date => $hours) {
+                                $parts[] = e(date('d.m', strtotime((string) $date))) . ' — ' . (int) $hours . ' ч.';
+                            }
+                            echo implode(', ', $parts);
+                        ?>
+                    </span>
+                <?php endif; ?>
                 <div style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">
                     <form method="post" action="index.php?action=admin_ktp_generate" style="margin:0;"
                           title="Пересобрать КТП по актуальному расписанию. Ручные правки будут потеряны."

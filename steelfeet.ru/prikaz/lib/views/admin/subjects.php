@@ -83,7 +83,7 @@ declare(strict_types=1);
                             <th>Полное название</th>
                             <th style="width:70px;">Часов</th>
                             <th style="width:150px;">Семестр / Практика</th>
-                            <th style="width:260px;">Действия</th>
+                            <th style="width:190px;">Действия</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -104,72 +104,10 @@ declare(strict_types=1);
                                     <?= $s['semester_name'] !== '' ? e($s['semester_name']) : '—' ?>
                                 </td>
                                 <td class="pzk-table__actions">
-                                    <details class="pzk-row-details">
-                                        <summary class="pzk-btn pzk-btn--sm">Редактировать</summary>
-                                        <form method="post" action="index.php?action=admin_subject_save"
-                                              class="pzk-edit-form pzk-subject-form" autocomplete="off">
-                                            <?= csrf_field() ?>
-                                            <input type="hidden" name="id" value="<?= (int) $s['id'] ?>">
-                                            <label class="pzk-field">
-                                                <span class="pzk-field__label">Учебный год</span>
-                                                <select name="academic_year_id" required
-                                                        class="pzk-field__input pzk-field__input--sm">
-                                                    <?php foreach ($adminAcademicYears as $ay): ?>
-                                                        <option value="<?= (int) $ay['id'] ?>"
-                                                                <?= (int) $ay['id'] === (int) $s['academic_year_id'] ? 'selected' : '' ?>>
-                                                            <?= e($ay['name']) ?>
-                                                        </option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </label>
-                                            <label class="pzk-field">
-                                                <span class="pzk-field__label">Группа</span>
-                                                <select name="group_id" required
-                                                        class="pzk-field__input pzk-field__input--sm">
-                                                    <?php foreach ($adminAllGroups as $g): ?>
-                                                        <option value="<?= (int) $g['id'] ?>"
-                                                                data-year="<?= (int) $g['academic_year_id'] ?>"
-                                                                <?= (int) $g['id'] === (int) $s['group_id'] ? 'selected' : '' ?>>
-                                                            <?= e($g['name']) ?> · <?= e($g['year_name']) ?>
-                                                        </option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </label>
-                                            <label class="pzk-field">
-                                                <span class="pzk-field__label">Семестр / Практика</span>
-                                                <select name="semester_id" required
-                                                        class="pzk-field__input pzk-field__input--sm">
-                                                    <option value="">— выберите семестр —</option>
-                                                    <?php foreach ($adminAllSemesters as $sm): ?>
-                                                        <option value="<?= (int) $sm['id'] ?>"
-                                                                data-year="<?= (int) $sm['academic_year_id'] ?>"
-                                                                <?= (int) $sm['id'] === (int) $s['semester_id'] ? 'selected' : '' ?>>
-                                                            <?= e($sm['name']) ?> · <?= e($sm['year_name']) ?>
-                                                        </option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </label>
-                                            <label class="pzk-field">
-                                                <span class="pzk-field__label">Краткое название</span>
-                                                <input type="text" name="short_name" value="<?= e($s['short_name']) ?>"
-                                                       required autocomplete="off"
-                                                       class="pzk-field__input pzk-field__input--sm">
-                                            </label>
-                                            <label class="pzk-field">
-                                                <span class="pzk-field__label">Полное название</span>
-                                                <input type="text" name="full_name" value="<?= e($s['full_name']) ?>"
-                                                       required autocomplete="off"
-                                                       class="pzk-field__input pzk-field__input--sm">
-                                            </label>
-                                            <label class="pzk-field">
-                                                <span class="pzk-field__label">Количество часов</span>
-                                                <input type="number" name="hours" value="<?= (int) $s['hours'] ?>"
-                                                       required min="0" step="1" autocomplete="off"
-                                                       class="pzk-field__input pzk-field__input--sm">
-                                            </label>
-                                            <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Сохранить</button>
-                                        </form>
-                                    </details>
+                                    <button type="button" class="pzk-btn pzk-btn--sm"
+                                            data-open-subject-edit="subject-edit-<?= (int) $s['id'] ?>">
+                                        Редактировать
+                                    </button>
                                     <form method="post" action="index.php?action=admin_subject_delete"
                                           onsubmit="return confirm('Удалить предмет «<?= e($s['short_name']) ?>» (<?= e($s['group_name']) ?>, <?= e($s['year_name']) ?>)?');">
                                         <?= csrf_field() ?>
@@ -178,6 +116,82 @@ declare(strict_types=1);
                                     </form>
                                 </td>
                             </tr>
+
+                            <tr class="pzk-subject-edit-row">
+                                <td colspan="8">
+                                    <details class="pzk-subject-edit" id="subject-edit-<?= (int) $s['id'] ?>">
+                                        <summary style="display:none"></summary>
+                                        <form method="post" action="index.php?action=admin_subject_save"
+                                              class="pzk-subject-edit__form pzk-subject-form" autocomplete="off">
+                                            <?= csrf_field() ?>
+                                            <input type="hidden" name="id" value="<?= (int) $s['id'] ?>">
+                                            <div class="pzk-form__grid">
+                                                <label class="pzk-field">
+                                                    <span class="pzk-field__label">Учебный год</span>
+                                                    <select name="academic_year_id" required
+                                                            class="pzk-field__input pzk-field__input--sm">
+                                                        <?php foreach ($adminAcademicYears as $ay): ?>
+                                                            <option value="<?= (int) $ay['id'] ?>"
+                                                                    <?= (int) $ay['id'] === (int) $s['academic_year_id'] ? 'selected' : '' ?>>
+                                                                <?= e($ay['name']) ?>
+                                                            </option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </label>
+                                                <label class="pzk-field">
+                                                    <span class="pzk-field__label">Группа</span>
+                                                    <select name="group_id" required
+                                                            class="pzk-field__input pzk-field__input--sm">
+                                                        <?php foreach ($adminAllGroups as $g): ?>
+                                                            <option value="<?= (int) $g['id'] ?>"
+                                                                    data-year="<?= (int) $g['academic_year_id'] ?>"
+                                                                    <?= (int) $g['id'] === (int) $s['group_id'] ? 'selected' : '' ?>>
+                                                                <?= e($g['name']) ?> · <?= e($g['year_name']) ?>
+                                                            </option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </label>
+                                                <label class="pzk-field">
+                                                    <span class="pzk-field__label">Семестр / Практика</span>
+                                                    <select name="semester_id" required
+                                                            class="pzk-field__input pzk-field__input--sm">
+                                                        <option value="">— выберите семестр —</option>
+                                                        <?php foreach ($adminAllSemesters as $sm): ?>
+                                                            <option value="<?= (int) $sm['id'] ?>"
+                                                                    data-year="<?= (int) $sm['academic_year_id'] ?>"
+                                                                    <?= (int) $sm['id'] === (int) $s['semester_id'] ? 'selected' : '' ?>>
+                                                                <?= e($sm['name']) ?> · <?= e($sm['year_name']) ?>
+                                                            </option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </label>
+                                                <label class="pzk-field">
+                                                    <span class="pzk-field__label">Краткое название</span>
+                                                    <input type="text" name="short_name" value="<?= e($s['short_name']) ?>"
+                                                           required autocomplete="off"
+                                                           class="pzk-field__input pzk-field__input--sm">
+                                                </label>
+                                                <label class="pzk-field">
+                                                    <span class="pzk-field__label">Полное название</span>
+                                                    <input type="text" name="full_name" value="<?= e($s['full_name']) ?>"
+                                                           required autocomplete="off"
+                                                           class="pzk-field__input pzk-field__input--sm">
+                                                </label>
+                                                <label class="pzk-field">
+                                                    <span class="pzk-field__label">Количество часов</span>
+                                                    <input type="number" name="hours" value="<?= (int) $s['hours'] ?>"
+                                                           required min="0" step="1" autocomplete="off"
+                                                           class="pzk-field__input pzk-field__input--sm">
+                                                </label>
+                                            </div>
+                                            <div class="pzk-subject-edit__actions">
+                                                <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Сохранить</button>
+                                            </div>
+                                        </form>
+                                    </details>
+                                </td>
+                            </tr>
+
                             <tr class="pzk-topics-row">
                                 <td colspan="8">
                                     <?php require __DIR__ . '/_topics_block.php'; ?>
