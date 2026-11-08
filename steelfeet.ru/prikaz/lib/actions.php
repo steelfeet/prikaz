@@ -523,7 +523,6 @@ if ($action === 'admin_curriculum_save') {
     $ord     = (int) ($_POST['ord'] ?? 0);
     $topic   = trim((string) ($_POST['topic'] ?? ''));
 
-    // Возврат в «Предметы», при наличии — с годом предмета
     $backUrl = 'index.php?page=admin&section=subjects';
     if ($subject > 0) {
         $stmt = $pdo->prepare(
@@ -537,14 +536,17 @@ if ($action === 'admin_curriculum_save') {
     }
 
     if ($subject <= 0) {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Предмет не указан.']);
         flash_set('danger', 'Предмет не указан.');
         redirect($backUrl);
     }
     if ($topic === '') {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Тема не может быть пустой.']);
         flash_set('danger', 'Тема не может быть пустой.');
         redirect($backUrl);
     }
     if ($ord <= 0) {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Порядковый номер должен быть больше 0.']);
         flash_set('danger', 'Порядковый номер должен быть больше 0.');
         redirect($backUrl);
     }
@@ -555,6 +557,14 @@ if ($action === 'admin_curriculum_save') {
                 'UPDATE curriculum SET ord = :o, topic = :t, updated_at = :u WHERE id = :id'
             )->execute([':o' => $ord, ':t' => $topic, ':u' => date('Y-m-d H:i:s'), ':id' => $id]);
             audit_log((int) $currentUser['id'], 'curriculum_update', 'curriculum', $id);
+
+            if (wants_json()) {
+                json_response([
+                    'ok'         => true,
+                    'html'       => curriculum_render_block($subject),
+                    'subject_id' => $subject,
+                ]);
+            }
             flash_set('success', 'Тема сохранена.');
         } else {
             $pdo->prepare(
@@ -562,14 +572,81 @@ if ($action === 'admin_curriculum_save') {
             )->execute([':s' => $subject, ':o' => $ord, ':t' => $topic]);
             $newId = (int) $pdo->lastInsertId();
             audit_log((int) $currentUser['id'], 'curriculum_create', 'curriculum', $newId);
+
+            if (wants_json()) {
+                json_response([
+                    'ok'         => true,
+                    'html'       => curriculum_render_block($subject),
+                    'subject_id' => $subject,
+                ]);
+            }
             flash_set('success', 'Тема добавлена.');
         }
     } catch (PDOException $e) {
-        if (str_contains($e->getMessage(), 'UNIQUE')) {
-            flash_set('danger', 'Тема с таким порядковым номером уже есть у этого предмета.');
-        } else {
-            flash_set('danger', 'Ошибка: ' . $e->getMessage());
+        $err = str_contains($e->getMessage(), 'UNIQUE')
+            ? 'Тема с таким порядковым номером уже есть у этого предмета.'
+            : 'Ошибка: ' . $e->getMessage();
+        if (wants_json()) json_response(['ok' => false, 'error' => $err]);
+        flash_set('danger', $err);
+    }
+    redirect($backUrl);
+}
+
+// ===== ТЕМЫ: вставить тему ниже выбранной =====
+if ($action === 'admin_curriculum_insert_below') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $id    = (int) ($_POST['id'] ?? 0);
+    $topic = trim((string) ($_POST['topic'] ?? ''));
+
+    $backUrl = 'index.php?page=admin&section=subjects';
+    $subjectId = 0;
+    try {
+        $stmt = $pdo->prepare('SELECT subject_id FROM curriculum WHERE id = :id');
+        $stmt->execute([':id' => $id]);
+        $subjectId = (int) $stmt->fetchColumn();
+        if ($subjectId > 0) {
+            $stmt = $pdo->prepare(
+                'SELECT sm.academic_year_id FROM subjects s
+                 JOIN semesters sm ON sm.id = s.semester_id
+                 WHERE s.id = :id'
+            );
+            $stmt->execute([':id' => $subjectId]);
+            $yearId = (int) $stmt->fetchColumn();
+            if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
         }
+    } catch (Throwable $e) {
+        if (wants_json()) json_response(['ok' => false, 'error' => $e->getMessage()]);
+        flash_set('danger', $e->getMessage());
+        redirect($backUrl);
+    }
+
+    if ($subjectId <= 0) {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Тема не найдена.']);
+        flash_set('danger', 'Тема не найдена.');
+        redirect($backUrl);
+    }
+    if ($topic === '') {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Тема не может быть пустой.']);
+        flash_set('danger', 'Тема не может быть пустой.');
+        redirect($backUrl);
+    }
+
+    try {
+        $newId = curriculum_insert_below($id, $topic, $pdo);
+        audit_log((int) $currentUser['id'], 'curriculum_insert_below', 'curriculum', $newId);
+
+        if (wants_json()) {
+            json_response([
+                'ok'         => true,
+                'html'       => curriculum_render_block($subjectId),
+                'subject_id' => $subjectId,
+            ]);
+        }
+        flash_set('success', 'Тема добавлена ниже.');
+    } catch (Throwable $e) {
+        if (wants_json()) json_response(['ok' => false, 'error' => $e->getMessage()]);
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
     }
     redirect($backUrl);
 }
@@ -579,24 +656,34 @@ if ($action === 'admin_curriculum_delete') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
     $id = (int) ($_POST['id'] ?? 0);
 
-    // Возврат в «Предметы» — найдём год по предмету
     $backUrl = 'index.php?page=admin&section=subjects';
+    $subjectId = 0;
     try {
         $stmt = $pdo->prepare(
-            'SELECT sm.academic_year_id
+            'SELECT c.subject_id, sm.academic_year_id
              FROM curriculum c
              JOIN subjects s ON s.id = c.subject_id
              JOIN semesters sm ON sm.id = s.semester_id
              WHERE c.id = :id'
         );
         $stmt->execute([':id' => $id]);
-        $yearId = (int) $stmt->fetchColumn();
+        $row = $stmt->fetch();
+        if ($row) {
+            $subjectId = (int) $row['subject_id'];
+            $yearId    = (int) $row['academic_year_id'];
+            if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
+        }
 
         $pdo->prepare('DELETE FROM curriculum WHERE id = :id')->execute([':id' => $id]);
         audit_log((int) $currentUser['id'], 'curriculum_delete', 'curriculum', $id);
+
+        if (wants_json()) {
+            $html = $subjectId > 0 ? curriculum_render_block($subjectId) : '';
+            json_response(['ok' => true, 'html' => $html, 'subject_id' => $subjectId]);
+        }
         flash_set('success', 'Тема удалена.');
-        if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
     } catch (Throwable $e) {
+        if (wants_json()) json_response(['ok' => false, 'error' => $e->getMessage()]);
         flash_set('danger', 'Ошибка: ' . $e->getMessage());
     }
     redirect($backUrl);
@@ -609,7 +696,6 @@ if ($action === 'admin_curriculum_bulk_add') {
     $subjectId = (int) ($_POST['subject_id'] ?? 0);
     $rawTopics = (string) ($_POST['topics'] ?? '');
 
-    // Возврат в «Предметы», с годом предмета
     $backUrl = 'index.php?page=admin&section=subjects';
     if ($subjectId > 0) {
         $stmt = $pdo->prepare(
@@ -623,6 +709,7 @@ if ($action === 'admin_curriculum_bulk_add') {
     }
 
     if ($subjectId <= 0) {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Предмет не указан.']);
         flash_set('danger', 'Предмет не указан.');
         redirect($backUrl);
     }
@@ -630,6 +717,7 @@ if ($action === 'admin_curriculum_bulk_add') {
     $stmt->execute([':id' => $subjectId]);
     $subject = $stmt->fetch();
     if (!$subject) {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Предмет не найден.']);
         flash_set('danger', 'Предмет не найден.');
         redirect($backUrl);
     }
@@ -637,8 +725,10 @@ if ($action === 'admin_curriculum_bulk_add') {
     $parsed = parse_topic_lines($rawTopics);
 
     if ($parsed['invalid'] > 0) {
-        flash_set('danger', 'Не удалось разобрать вставленный текст: возможны символы другой кодировки. '
-            . 'Скопируйте текст как обычный текст (Ctrl+Shift+V) и попробуйте снова.');
+        $err = 'Не удалось разобрать вставленный текст: возможны символы другой кодировки. '
+            . 'Скопируйте текст как обычный текст (Ctrl+Shift+V) и попробуйте снова.';
+        if (wants_json()) json_response(['ok' => false, 'error' => $err]);
+        flash_set('danger', $err);
         redirect($backUrl);
     }
 
@@ -667,13 +757,15 @@ if ($action === 'admin_curriculum_bulk_add') {
     if ($toAdd === []) {
         $skipped = $dupBatch + $dupExist;
         if ($skipped > 0) {
-            flash_set('danger', 'Все непустые строки — дубликаты (повтор в списке: ' . $dupBatch
-                . ', уже есть в плане: ' . $dupExist . '). Новых тем не добавлено.');
+            $err = 'Все непустые строки — дубликаты (повтор в списке: ' . $dupBatch
+                . ', уже есть в плане: ' . $dupExist . '). Новых тем не добавлено.';
         } elseif ($emptyLines > 0) {
-            flash_set('danger', 'Все строки пустые или состоят только из пробелов и невидимых символов. Новых тем не добавлено.');
+            $err = 'Все строки пустые или состоят только из пробелов и невидимых символов. Новых тем не добавлено.';
         } else {
-            flash_set('danger', 'Список пуст: нечего добавлять.');
+            $err = 'Список пуст: нечего добавлять.';
         }
+        if (wants_json()) json_response(['ok' => false, 'error' => $err]);
+        flash_set('danger', $err);
         redirect($backUrl);
     }
 
@@ -693,6 +785,14 @@ if ($action === 'admin_curriculum_bulk_add') {
         audit_log((int) $currentUser['id'], 'curriculum_bulk_create', 'subject', $subjectId,
             'added=' . count($toAdd) . ' skipped=' . $skipped . ' empty=' . $emptyLines);
 
+        if (wants_json()) {
+            json_response([
+                'ok'         => true,
+                'html'       => curriculum_render_block($subjectId),
+                'subject_id' => $subjectId,
+            ]);
+        }
+
         $message = 'Добавлено тем: ' . count($toAdd) . ' (с № ' . ($ord - count($toAdd) + 1) . ' по № ' . $ord . ').';
         if ($skipped > 0) {
             $message .= ' Пропущено дубликатов: ' . $skipped . '.';
@@ -703,131 +803,11 @@ if ($action === 'admin_curriculum_bulk_add') {
         flash_set('success', $message);
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        flash_set('danger', 'Ошибка: ' . $e->getMessage());
-    }
-    redirect($backUrl);
-}
-
-
-// ===== КТП: генерация =====
-if ($action === 'admin_ktp_generate') {
-    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
-
-    $subjectId = (int) ($_POST['subject_id'] ?? 0);
-
-    $backUrl = 'index.php?page=admin&section=subjects';
-    if ($subjectId > 0) {
-        $stmt = $pdo->prepare(
-            'SELECT sm.academic_year_id FROM subjects s
-             JOIN semesters sm ON sm.id = s.semester_id
-             WHERE s.id = :id'
-        );
-        $stmt->execute([':id' => $subjectId]);
-        $yearId = (int) $stmt->fetchColumn();
-        if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
-        $backUrl .= '#ktp-' . $subjectId;
-    }
-
-    if ($subjectId <= 0) {
-        if (wants_json()) json_response(['ok' => false, 'error' => 'Предмет не указан.']);
-        flash_set('danger', 'Предмет не указан.');
-        redirect($backUrl);
-    }
-
-    try {
-        ktp_generate($subjectId, $pdo);
-        audit_log((int) $currentUser['id'], 'ktp_generate', 'subject', $subjectId);
-
-        if (wants_json()) {
-            json_response(['ok' => true, 'html' => ktp_render_block($subjectId), 'subject_id' => $subjectId]);
-        }
-        flash_set('success', 'КТП сгенерировано.');
-    } catch (Throwable $e) {
         if (wants_json()) json_response(['ok' => false, 'error' => $e->getMessage()]);
         flash_set('danger', 'Ошибка: ' . $e->getMessage());
     }
     redirect($backUrl);
 }
-
-// ===== КТП: дублировать тему на следующий урок =====
-if ($action === 'admin_ktp_add_more') {
-    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
-
-    $entryId = (int) ($_POST['id'] ?? 0);
-
-    $backUrl = 'index.php?page=admin&section=subjects';
-    $subjectId = 0;
-    try {
-        $stmt = $pdo->prepare('SELECT subject_id FROM ktp_entries WHERE id = :id');
-        $stmt->execute([':id' => $entryId]);
-        $subjectId = (int) $stmt->fetchColumn();
-        if ($subjectId > 0) {
-            $stmt = $pdo->prepare(
-                'SELECT sm.academic_year_id FROM subjects s
-                 JOIN semesters sm ON sm.id = s.semester_id
-                 WHERE s.id = :id'
-            );
-            $stmt->execute([':id' => $subjectId]);
-            $yearId = (int) $stmt->fetchColumn();
-            if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
-            $backUrl .= '#ktp-' . $subjectId;
-        }
-        ktp_add_more($entryId, $pdo);
-        audit_log((int) $currentUser['id'], 'ktp_add_more', 'ktp_entry', $entryId);
-
-        if (wants_json()) {
-            $html = $subjectId > 0 ? ktp_render_block($subjectId) : '';
-            json_response(['ok' => true, 'html' => $html, 'subject_id' => $subjectId]);
-        }
-        flash_set('success', 'К теме добавлен ещё один урок.');
-    } catch (Throwable $e) {
-        if (wants_json()) json_response(['ok' => false, 'error' => $e->getMessage()]);
-        flash_set('danger', 'Ошибка: ' . $e->getMessage());
-    }
-    redirect($backUrl);
-}
-
-// ===== КТП: удалить тему =====
-if ($action === 'admin_ktp_delete') {
-    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
-
-    $entryId = (int) ($_POST['id'] ?? 0);
-
-    $backUrl = 'index.php?page=admin&section=subjects';
-    $subjectId = 0;
-    try {
-        $stmt = $pdo->prepare('SELECT subject_id FROM ktp_entries WHERE id = :id');
-        $stmt->execute([':id' => $entryId]);
-        $subjectId = (int) $stmt->fetchColumn();
-        if ($subjectId > 0) {
-            $stmt = $pdo->prepare(
-                'SELECT sm.academic_year_id FROM subjects s
-                 JOIN semesters sm ON sm.id = s.semester_id
-                 WHERE s.id = :id'
-            );
-            $stmt->execute([':id' => $subjectId]);
-            $yearId = (int) $stmt->fetchColumn();
-            if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
-            $backUrl .= '#ktp-' . $subjectId;
-        }
-        ktp_delete($entryId, $pdo);
-        audit_log((int) $currentUser['id'], 'ktp_delete', 'ktp_entry', $entryId);
-
-        if (wants_json()) {
-            $html = $subjectId > 0 ? ktp_render_block($subjectId) : '';
-            json_response(['ok' => true, 'html' => $html, 'subject_id' => $subjectId]);
-        }
-        flash_set('success', 'Тема удалена из КТП.');
-    } catch (Throwable $e) {
-        if (wants_json()) json_response(['ok' => false, 'error' => $e->getMessage()]);
-        flash_set('danger', 'Ошибка: ' . $e->getMessage());
-    }
-    redirect($backUrl);
-}
-
-
-
-
 
 // ===== РАСПИСАНИЕ: сохранение (перезапись семестра) =====
 if ($action === 'admin_schedule_save') {
@@ -983,7 +963,7 @@ if ($action === 'admin_schedule_clear') {
     redirect($backUrl);
 }
 
-// ===== ПРАЗДНИЧНЫЙ ДЕНЬ: добавление (в разделе «Учебный год») =====
+// ===== ПРАЗДНИЧНЫЙ ДЕНЬ: добавление =====
 if ($action === 'admin_holiday_add') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
 
@@ -1065,6 +1045,122 @@ if ($action === 'admin_holiday_delete') {
         } catch (Throwable $e) {
             flash_set('danger', 'Ошибка: ' . $e->getMessage());
         }
+    }
+    redirect($backUrl);
+}
+
+// ===== КТП: генерация =====
+if ($action === 'admin_ktp_generate') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $subjectId = (int) ($_POST['subject_id'] ?? 0);
+
+    $backUrl = 'index.php?page=admin&section=subjects';
+    if ($subjectId > 0) {
+        $stmt = $pdo->prepare(
+            'SELECT sm.academic_year_id FROM subjects s
+             JOIN semesters sm ON sm.id = s.semester_id
+             WHERE s.id = :id'
+        );
+        $stmt->execute([':id' => $subjectId]);
+        $yearId = (int) $stmt->fetchColumn();
+        if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
+        $backUrl .= '#ktp-' . $subjectId;
+    }
+
+    if ($subjectId <= 0) {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Предмет не указан.']);
+        flash_set('danger', 'Предмет не указан.');
+        redirect($backUrl);
+    }
+
+    try {
+        ktp_generate($subjectId, $pdo);
+        audit_log((int) $currentUser['id'], 'ktp_generate', 'subject', $subjectId);
+
+        if (wants_json()) {
+            json_response(['ok' => true, 'html' => ktp_render_block($subjectId), 'subject_id' => $subjectId]);
+        }
+        flash_set('success', 'КТП сгенерировано.');
+    } catch (Throwable $e) {
+        if (wants_json()) json_response(['ok' => false, 'error' => $e->getMessage()]);
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect($backUrl);
+}
+
+// ===== КТП: дублировать тему на следующий блок =====
+if ($action === 'admin_ktp_add_more') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $entryId = (int) ($_POST['id'] ?? 0);
+
+    $backUrl = 'index.php?page=admin&section=subjects';
+    $subjectId = 0;
+    try {
+        $stmt = $pdo->prepare('SELECT subject_id FROM ktp_entries WHERE id = :id');
+        $stmt->execute([':id' => $entryId]);
+        $subjectId = (int) $stmt->fetchColumn();
+        if ($subjectId > 0) {
+            $stmt = $pdo->prepare(
+                'SELECT sm.academic_year_id FROM subjects s
+                 JOIN semesters sm ON sm.id = s.semester_id
+                 WHERE s.id = :id'
+            );
+            $stmt->execute([':id' => $subjectId]);
+            $yearId = (int) $stmt->fetchColumn();
+            if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
+            $backUrl .= '#ktp-' . $subjectId;
+        }
+        ktp_add_more($entryId, $pdo);
+        audit_log((int) $currentUser['id'], 'ktp_add_more', 'ktp_entry', $entryId);
+
+        if (wants_json()) {
+            $html = $subjectId > 0 ? ktp_render_block($subjectId) : '';
+            json_response(['ok' => true, 'html' => $html, 'subject_id' => $subjectId]);
+        }
+        flash_set('success', 'Тема продублирована на следующий блок.');
+    } catch (Throwable $e) {
+        if (wants_json()) json_response(['ok' => false, 'error' => $e->getMessage()]);
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect($backUrl);
+}
+
+// ===== КТП: удалить тему =====
+if ($action === 'admin_ktp_delete') {
+    if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
+
+    $entryId = (int) ($_POST['id'] ?? 0);
+
+    $backUrl = 'index.php?page=admin&section=subjects';
+    $subjectId = 0;
+    try {
+        $stmt = $pdo->prepare('SELECT subject_id FROM ktp_entries WHERE id = :id');
+        $stmt->execute([':id' => $entryId]);
+        $subjectId = (int) $stmt->fetchColumn();
+        if ($subjectId > 0) {
+            $stmt = $pdo->prepare(
+                'SELECT sm.academic_year_id FROM subjects s
+                 JOIN semesters sm ON sm.id = s.semester_id
+                 WHERE s.id = :id'
+            );
+            $stmt->execute([':id' => $subjectId]);
+            $yearId = (int) $stmt->fetchColumn();
+            if ($yearId > 0) $backUrl .= '&subject_year=' . $yearId;
+            $backUrl .= '#ktp-' . $subjectId;
+        }
+        ktp_delete($entryId, $pdo);
+        audit_log((int) $currentUser['id'], 'ktp_delete', 'ktp_entry', $entryId);
+
+        if (wants_json()) {
+            $html = $subjectId > 0 ? ktp_render_block($subjectId) : '';
+            json_response(['ok' => true, 'html' => $html, 'subject_id' => $subjectId]);
+        }
+        flash_set('success', 'Тема удалена из КТП.');
+    } catch (Throwable $e) {
+        if (wants_json()) json_response(['ok' => false, 'error' => $e->getMessage()]);
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
     }
     redirect($backUrl);
 }

@@ -88,9 +88,6 @@ declare(strict_types=1);
                     </thead>
                     <tbody>
                         <?php foreach ($adminSubjects as $s): ?>
-                            <?php
-                                $sTopics = $s['topics'] ?? [];
-                            ?>
                             <tr>
                                 <td><?= (int) $s['id'] ?></td>
                                 <td>
@@ -183,115 +180,7 @@ declare(strict_types=1);
                             </tr>
                             <tr class="pzk-topics-row">
                                 <td colspan="8">
-                                    <details class="pzk-subject-topics">
-                                        <summary class="pzk-subject-topics__summary">
-                                            <?php if ($sTopics !== []): ?>
-                                                📋 Темы (<?= count($sTopics) ?>) — развернуть
-                                            <?php else: ?>
-                                                📋 + Добавить темы
-                                            <?php endif; ?>
-                                        </summary>
-                                        <div class="pzk-subject-topics__body">
-                                            <?php if ($sTopics !== []): ?>
-                                                <table class="pzk-topics-table">
-                                                    <thead>
-                                                        <tr>
-                                                            <th style="width:50px;">№</th>
-                                                            <th>Тема</th>
-                                                            <th style="width:220px;">Действия</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        <?php foreach ($sTopics as $t): ?>
-                                                            <tr>
-                                                                <td><?= (int) $t['ord'] ?></td>
-                                                                <td><?= e($t['topic']) ?></td>
-                                                                <td class="pzk-table__actions">
-                                                                    <details class="pzk-row-details">
-                                                                        <summary class="pzk-btn pzk-btn--sm">Редактировать</summary>
-                                                                        <form method="post" action="index.php?action=admin_curriculum_save"
-                                                                              class="pzk-edit-form" autocomplete="off">
-                                                                            <?= csrf_field() ?>
-                                                                            <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
-                                                                            <input type="hidden" name="subject_id" value="<?= (int) $s['id'] ?>">
-                                                                            <label class="pzk-field">
-                                                                                <span class="pzk-field__label">№</span>
-                                                                                <input type="number" name="ord" value="<?= (int) $t['ord'] ?>"
-                                                                                       required min="1" autocomplete="off"
-                                                                                       class="pzk-field__input pzk-field__input--sm">
-                                                                            </label>
-                                                                            <label class="pzk-field">
-                                                                                <span class="pzk-field__label">Тема</span>
-                                                                                <input type="text" name="topic" value="<?= e($t['topic']) ?>"
-                                                                                       required autocomplete="off"
-                                                                                       class="pzk-field__input pzk-field__input--sm">
-                                                                            </label>
-                                                                            <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Сохранить</button>
-                                                                        </form>
-                                                                    </details>
-                                                                    <form method="post" action="index.php?action=admin_curriculum_delete"
-                                                                          onsubmit="return confirm('Удалить тему «<?= e($t['topic']) ?>»?');">
-                                                                        <?= csrf_field() ?>
-                                                                        <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
-                                                                        <button type="submit" class="pzk-btn pzk-btn--sm">Удалить</button>
-                                                                    </form>
-                                                                </td>
-                                                            </tr>
-                                                        <?php endforeach; ?>
-                                                    </tbody>
-                                                </table>
-                                            <?php else: ?>
-                                                <p class="pzk-form__hint" style="margin:0 0 8px;">
-                                                    У этого предмета пока нет тем.
-                                                </p>
-                                            <?php endif; ?>
-
-                                            <div class="pzk-topics-forms">
-                                                <form method="post" action="index.php?action=admin_curriculum_save"
-                                                      class="pzk-inline-form pzk-topics-add-form" autocomplete="off">
-                                                    <?= csrf_field() ?>
-                                                    <input type="hidden" name="subject_id" value="<?= (int) $s['id'] ?>">
-                                                    <label>№
-                                                        <input type="number" name="ord" min="1"
-                                                               value="<?= count($sTopics) + 1 ?>" required
-                                                               autocomplete="off"
-                                                               class="pzk-field__input pzk-field__input--sm"
-                                                               style="width:70px;">
-                                                    </label>
-                                                    <label style="flex:1;">Тема
-                                                        <input type="text" name="topic" required
-                                                               placeholder="Название темы"
-                                                               autocomplete="off"
-                                                               class="pzk-field__input pzk-field__input--sm"
-                                                               style="width:100%;">
-                                                    </label>
-                                                    <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Добавить тему</button>
-                                                </form>
-
-                                                <details class="pzk-details" style="margin:0;">
-                                                    <summary class="pzk-details__summary" style="padding:6px 12px; font-size:0.95rem;">📋 Массовое добавление тем</summary>
-                                                    <form method="post" action="index.php?action=admin_curriculum_bulk_add"
-                                                          class="pzk-form" autocomplete="off">
-                                                        <?= csrf_field() ?>
-                                                        <input type="hidden" name="subject_id" value="<?= (int) $s['id'] ?>">
-                                                        <p class="pzk-form__hint" style="margin:0 0 4px;">
-                                                            Одна строка — одна тема. Повторы в списке и уже имеющиеся темы игнорируются.
-                                                            Нумерация продолжается от последней темы<?= $sTopics !== [] ? ' (сейчас ' . count($sTopics) . ')' : '' ?>.
-                                                        </p>
-                                                        <label class="pzk-field">
-                                                            <span class="pzk-field__label">Темы</span>
-                                                            <textarea class="pzk-field__textarea" name="topics" rows="8" required
-                                                                      placeholder="Введение в предмет&#10;Основные понятия и определения&#10;..."></textarea>
-                                                        </label>
-                                                        <div class="pzk-form__actions">
-                                                            <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Добавить темы списком</button>
-                                                        </div>
-                                                    </form>
-                                                </details>
-                                            </div>
-                                        </div>
-                                    </details>
-
+                                    <?php require __DIR__ . '/_topics_block.php'; ?>
                                     <?php require __DIR__ . '/_ktp_block.php'; ?>
                                 </td>
                             </tr>

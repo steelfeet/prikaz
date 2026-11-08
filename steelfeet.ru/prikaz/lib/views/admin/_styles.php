@@ -28,9 +28,6 @@ declare(strict_types=1);
 }
 .pzk-table-wrap > .pzk-table { border: none; }
 
-/* В секции «Предметы» обёртка идёт без своего overflow, чтобы
-   sticky-шапка КТП цеплялась к viewport, а не к scroll-контейнеру.
-   На узких экранах (см. media query) overflow возвращается. */
 .pzk-table-wrap--subjects {
     overflow: visible;
 }
@@ -42,6 +39,7 @@ declare(strict_types=1);
     flex-wrap: wrap;
 }
 .pzk-table td.pzk-table__actions form { display: inline-block; margin: 0; }
+.pzk-table td.pzk-table__actions > button { white-space: nowrap; }
 
 .pzk-table__empty {
     text-align: center;
@@ -584,7 +582,7 @@ declare(strict_types=1);
     padding: 5px 10px;
     border-bottom: 1px solid rgba(26, 26, 26, 0.08);
     text-align: left;
-    vertical-align: middle;
+    vertical-align: top;
 }
 .pzk-topics-table thead th {
     background: rgba(139, 105, 20, 0.08);
@@ -611,6 +609,66 @@ declare(strict_types=1);
     padding: 8px 10px !important;
 }
 
+/* ===== Inline-редактирование темы ===== */
+.pzk-topic-edit { display: block; }
+.pzk-topic-edit > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 0;
+    margin: 0;
+    user-select: none;
+}
+.pzk-topic-edit > summary::-webkit-details-marker { display: none; }
+.pzk-topic-edit > summary::marker { content: ''; }
+.pzk-topic-edit > summary:hover {
+    background: rgba(139, 105, 20, 0.05);
+}
+.pzk-topic-edit[open] > summary {
+    font-weight: 600;
+    color: #6b5010;
+}
+.pzk-topic-edit__form {
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: #fbf7ec;
+    border: 1px solid #e8dcc0;
+    border-left: 3px solid #8b6914;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.pzk-topic-edit__form .pzk-field__textarea {
+    min-height: 4.5em;
+    font-size: 0.92rem;
+    padding: 6px 10px;
+    resize: vertical;
+}
+.pzk-topic-edit__actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* Ссылка «+ Добавить ниже» под текстом темы */
+.pzk-topic-below { margin-top: 4px; }
+.pzk-topic-below__summary {
+    display: inline-block;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.78rem;
+    color: #8b6914;
+    opacity: 0.75;
+    padding: 1px 4px;
+    border-radius: 2px;
+    transition: opacity 0.15s, background-color 0.15s;
+}
+.pzk-topic-below__summary:hover {
+    opacity: 1;
+    background: rgba(139, 105, 20, 0.08);
+}
+.pzk-topic-below[open] .pzk-topic-below__summary {
+    opacity: 1;
+    font-weight: 600;
+}
+
 /* ===== КТП ===== */
 .pzk-subject-ktp {
     background: #f5f0e0;
@@ -626,9 +684,6 @@ declare(strict_types=1);
     border: 1px solid #e8dcc0;
     border-left: 3px solid #8b6914;
     border-bottom: 0;
-    /* Нижняя граница шапки — это верхняя граница таблицы.
-       См. .pzk-ktp-table-wrap (border-top снят) и .pzk-ktp-table thead th
-       (top: var(--ktp-head-h)) — они стыкуются без зазора. */
     margin-bottom: 0;
     position: sticky;
     top: 0;
@@ -660,7 +715,6 @@ declare(strict_types=1);
 }
 .pzk-ktp-table-wrap {
     overflow: visible;
-    /* верхняя граница не нужна: её место занимает border-bottom шапки */
     border: 1px solid rgba(26, 26, 26, 0.1);
     border-top: 0;
     background: #fff;
@@ -680,7 +734,6 @@ declare(strict_types=1);
 }
 .pzk-ktp-table thead th {
     position: sticky;
-    /* вплотную под шапкой: без +8px, без лишнего зазора */
     top: var(--ktp-head-h, 42px);
     z-index: 2;
     background: #fbf7ec;
@@ -731,10 +784,7 @@ declare(strict_types=1);
     line-height: 1.25;
 }
 
-/* ===== Узкие экраны: возвращаем внутреннюю прокрутку, отключаем sticky =====
-   На ширине до 1200px таблицы могут не влезать в экран, поэтому
-   overflow-контейнер возвращается, а sticky-элементы отключаются —
-   иначе шапка начнёт цепляться к внутреннему scroll-контейнеру. */
+/* ===== Узкие экраны ===== */
 @media (max-width: 1200px) {
     .pzk-table-wrap--subjects { overflow: auto; }
     .pzk-ktp__head { position: static; }

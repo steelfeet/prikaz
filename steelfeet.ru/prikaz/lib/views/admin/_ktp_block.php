@@ -8,6 +8,9 @@ declare(strict_types=1);
  *   id, short_name, full_name, hours, group_name, year_name,
  *   topics, ktp, ktp_layout, ktp_tariff, ktp_slots, ktp_blocks_count
  *
+ * В <summary> — сколько получается по КТП ($sKtpSlots, учебные пары
+ * по занятым блокам).
+ * В шапке: «Часов по плану / По тарификации / В КТП».
  * Дата в таблице склеивается через rowspan для всех блоков одного дня.
  */
 
@@ -40,7 +43,7 @@ foreach ($sKtpLayout as $row) if (empty($row['placed'])) $unplaced++;
 <details class="pzk-subject-ktp" id="ktp-<?= (int) $s['id'] ?>">
     <summary class="pzk-subject-topics__summary">
         <?php if ($sKtp !== []): ?>
-            📅 КТП (<?= $sKtpTariff ?> ч.) — развернуть
+            📅 КТП (<?= $sKtpSlots ?> ч.) — развернуть
         <?php else: ?>
             📅 КТП — не сгенерировано
         <?php endif; ?>

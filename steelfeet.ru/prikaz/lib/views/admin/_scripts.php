@@ -24,11 +24,41 @@ declare(strict_types=1);
         });
     });
 
-    // ===== Sticky-шапка КТП: синхронизация высоты =====
-    // Шапка (.pzk-ktp__head) приклеена к top: 0. Заголовки таблицы
-    // (.pzk-ktp-table thead th) — к top: var(--ktp-head-h). Высота шапки
-    // зависит от переноса кнопок, поэтому меряем её и складываем в
-    // CSS-переменную на самом details.
+    // ===== «Редактировать» в столбце «Действия» открывает inline-<details> =====
+    // Форма «Добавить ниже» открывается нативно — её summary в ячейке «Тема».
+    // Здесь же — закрываем соседнюю форму при открытии, чтобы не было двух
+    // раскрытых сразу.
+    function closeSiblingForms(details) {
+        var cell = details.parentElement;
+        if (!cell) return;
+        cell.querySelectorAll('details.pzk-topic-edit[open]').forEach(function (other) {
+            if (other !== details) other.open = false;
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+        var editBtn = e.target.closest('[data-open-topic-edit]');
+        if (!editBtn) return;
+        var id = editBtn.getAttribute('data-open-topic-edit');
+        var d = document.getElementById(id);
+        if (!d) return;
+        closeSiblingForms(d);
+        d.open = true;
+        var field = d.querySelector('textarea[name="topic"], input[name="topic"]');
+        if (field) field.focus();
+        d.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+
+    // Нативно открываемые формы (summary «Добавить ниже» и сам текст темы)
+    // тоже закрывают соседнюю форму.
+    document.addEventListener('toggle', function (e) {
+        var d = e.target;
+        if (!d.classList || !d.classList.contains('pzk-topic-edit')) return;
+        if (!d.open) return;
+        closeSiblingForms(d);
+    }, true);
+
+    // ===== Sticky-шапка КТП =====
     function syncKtpHeadHeight(details) {
         if (!details) return;
         var head = details.querySelector('.pzk-ktp__head');
@@ -62,17 +92,8 @@ declare(strict_types=1);
         document.querySelectorAll('.pzk-subject-ktp').forEach(syncKtpHeadHeight);
     });
 
-    // ===== AJAX для КТП =====
-    // Перехватываем submit у форм внутри .pzk-subject-ktp. Сервер возвращает
-    // JSON {ok, html}, JS заменяет блок целиком. Rучные правки («ещё одно»,
-    // «удалить») и генерация/перегенерация проходят без перезагрузки.
-    document.addEventListener('submit', function (e) {
-        var form = e.target;
-        var block = form.closest('.pzk-subject-ktp');
-        if (!block) return;
-
-        e.preventDefault();
-
+    // ===== Универсальный AJAX-submit для блоков (КТП и Темы) =====
+    function ajaxSubmit(form, block) {
         if (form.dataset.busy === '1') return;
         form.dataset.busy = '1';
 
@@ -104,7 +125,10 @@ declare(strict_types=1);
             if (!newBlock) return;
             newBlock.open = wasOpen;
             block.replaceWith(newBlock);
-            initKtpBlock(newBlock);
+
+            if (newBlock.classList.contains('pzk-subject-ktp')) {
+                initKtpBlock(newBlock);
+            }
         })
         .catch(function (err) {
             alert('Ошибка сети: ' + err.message);
@@ -112,6 +136,24 @@ declare(strict_types=1);
         .finally(function () {
             form.dataset.busy = '';
         });
+    }
+
+    document.addEventListener('submit', function (e) {
+        var form = e.target;
+
+        var ktpBlock = form.closest('.pzk-subject-ktp');
+        if (ktpBlock) {
+            e.preventDefault();
+            ajaxSubmit(form, ktpBlock);
+            return;
+        }
+
+        var topicsBlock = form.closest('.pzk-subject-topics');
+        if (topicsBlock) {
+            e.preventDefault();
+            ajaxSubmit(form, topicsBlock);
+            return;
+        }
     });
 })();
 </script>

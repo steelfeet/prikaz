@@ -90,7 +90,6 @@ require PRIKAZ_ROOT . '/lib/data.php';
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="<?= e(asset_url('styles.css')) ?>">
-    <link rel="stylesheet" href="<?= e(asset_url('prikaz.css')) ?>">
 </head>
 <body class="role-<?= e($viewRole) ?>">
     <div class="dashboard">
