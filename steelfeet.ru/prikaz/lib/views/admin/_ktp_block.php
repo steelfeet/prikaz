@@ -10,10 +10,13 @@ declare(strict_types=1);
  *   ktp_fact_hours, ktp_holiday_losses, ktp_blocks_count
  *
  * В шапке: «Часов по учебному плану / По тарификации / В КТП /
- * Фактически часов», затем — список праздников с отнятыми часами.
+ * Фактически часов», список праздников, фильтр по виду занятий
+ * (Все / Лекция / Практикум) и кнопка «Перегенерировать».
  *
- * При совпадении «В КТП» и «Фактически часов» оба значения подсвечиваются
- * зелёным и делаются полужирными.
+ * Фильтр работает на клиенте: JS скрывает строки неподходящего вида и
+ * заполняет столбец «№ по типу» номерами уроков этого типа. Нумерация
+ * учитывает слоты блока: пара слотов даёт «23-24», один слот — «23».
+ * При фильтре «Все» столбец скрыт, даты объединены через rowspan.
  */
 
 $sTopics        = $s['topics']             ?? [];
@@ -26,22 +29,11 @@ $sFactHours     = (int) ($s['ktp_fact_hours']     ?? $sPlanHours);
 $sHolidayLosses = $s['ktp_holiday_losses'] ?? [];
 $sHoursMatch    = ($sPlanHours > 0 && $sKtpTariff === $sPlanHours);
 
-// Совпадение «В КТП» (учебные пары) и «Фактически часов» (план минус праздники)
 $sSlotsFactMatch = ($sKtpSlots > 0 && $sKtpSlots === $sFactHours);
 
 $renderRows = [];
 foreach ($sKtpLayout as $row) {
     if (!empty($row['placed'])) $renderRows[] = $row;
-}
-
-$dateSpans = [];
-$totalRows = count($renderRows);
-$i = 0;
-while ($i < $totalRows) {
-    $date  = $renderRows[$i]['date'];
-    $start = $i;
-    while ($i < $totalRows && $renderRows[$i]['date'] === $date) $i++;
-    $dateSpans[$start] = $i - $start;
 }
 
 $unplaced = 0;
@@ -96,7 +88,14 @@ foreach ($sKtpLayout as $row) if (empty($row['placed'])) $unplaced++;
                         ?>
                     </span>
                 <?php endif; ?>
-                <div style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">
+                <div style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                    <select class="pzk-ktp-filter pzk-field__input pzk-field__input--sm"
+                            style="width:auto; min-width:140px;"
+                            title="Фильтр по виду занятий">
+                        <option value="all">Все занятия</option>
+                        <option value="group">Лекция</option>
+                        <option value="sub">Практикум</option>
+                    </select>
                     <form method="post" action="index.php?action=admin_ktp_generate" style="margin:0;"
                           title="Пересобрать КТП по актуальному расписанию. Ручные правки будут потеряны."
                           onsubmit="return confirm('Перегенерировать КТП? Если расписание изменилось — часы и уроки пересчитаются заново. Все ручные правки (удаления и «ещё одно») будут потеряны.');">
@@ -117,6 +116,7 @@ foreach ($sKtpLayout as $row) if (empty($row['placed'])) $unplaced++;
                         <thead>
                             <tr>
                                 <th style="width:110px;">Номер п/п</th>
+                                <th class="pzk-ktp-type-num" style="width:90px; display:none;">№ по типу</th>
                                 <th style="width:130px;">Дата</th>
                                 <th>Тема урока</th>
                                 <th style="width:150px;">Вид занятий</th>
@@ -124,8 +124,16 @@ foreach ($sKtpLayout as $row) if (empty($row['placed'])) $unplaced++;
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($renderRows as $i => $row): ?>
-                                <tr>
+                            <?php foreach ($renderRows as $row): ?>
+                                <?php
+                                    $rowKind    = (string) $row['kind'];
+                                    $rowDateIso = (string) $row['date'];
+                                    $rowDateRu  = date('d.m.Y', strtotime($rowDateIso));
+                                    $rowSlots   = max(1, (int) $row['slots']);
+                                ?>
+                                <tr data-kind="<?= e($rowKind) ?>"
+                                    data-date="<?= e($rowDateIso) ?>"
+                                    data-slots="<?= $rowSlots ?>">
                                     <td>
                                         <?php if ($row['num_start'] === $row['num_end']): ?>
                                             <?= (int) $row['num_start'] ?>
@@ -133,13 +141,11 @@ foreach ($sKtpLayout as $row) if (empty($row['placed'])) $unplaced++;
                                             <?= (int) $row['num_start'] ?>-<?= (int) $row['num_end'] ?>
                                         <?php endif; ?>
                                     </td>
-                                    <?php if (isset($dateSpans[$i])): ?>
-                                        <?php $span = $dateSpans[$i]; ?>
-                                        <td <?= $span > 1 ? 'rowspan="' . $span . '"' : '' ?>
-                                            style="vertical-align:middle; white-space:nowrap;">
-                                            <?= e(date('d.m.Y', strtotime($row['date']))) ?>
-                                        </td>
-                                    <?php endif; ?>
+                                    <td class="pzk-ktp-type-num" style="display:none;"></td>
+                                    <td class="pzk-ktp-date" data-date="<?= e($rowDateIso) ?>"
+                                        style="vertical-align:middle; white-space:nowrap;">
+                                        <?= e($rowDateRu) ?>
+                                    </td>
                                     <td><?= e($row['topic']) ?></td>
                                     <td><?= e($row['kind_label']) ?></td>
                                     <td class="pzk-table__actions">

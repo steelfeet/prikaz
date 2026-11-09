@@ -25,10 +25,6 @@ declare(strict_types=1);
     });
 
     // ===== Inline-редактирование =====
-    // «Редактировать» предмета открывает <details> в отдельной строке под
-    // предметом. «Редактировать» темы — в её ячейке. Одновременно открыта
-    // только одна форма каждого типа.
-
     function openInline(id, focusSelector, groupSelector) {
         var d = document.getElementById(id);
         if (!d) return;
@@ -62,9 +58,6 @@ declare(strict_types=1);
         }
     });
 
-    // При нативном открытии <details> (summary-текст темы или «+ Добавить
-    // ниже») — закрываем соседнюю форму в той же ячейке, чтобы не было двух
-    // раскрытых сразу.
     document.addEventListener('toggle', function (e) {
         var d = e.target;
         if (!d.classList || !d.classList.contains('pzk-topic-edit')) return;
@@ -87,6 +80,114 @@ declare(strict_types=1);
         details.style.setProperty('--ktp-head-h', head.getBoundingClientRect().height + 'px');
     }
 
+    // ===== Фильтр КТП по виду занятий =====
+    //
+    // Значения value в select: all / group / sub.
+    // При all: столбец «№ по типу» скрыт, даты объединены rowspan по группам.
+    // При group/sub: строки других видов скрыты, столбец «№ по типу» показан
+    // и в нём — накопленный номер урока этого типа с учётом слотов:
+    // один слот → «23», два слота → «23-24», три слота → «23-25».
+    function initKtpFilter(details) {
+        if (!details || details.dataset.ktpFilterInited === '1') return;
+        var sel = details.querySelector('.pzk-ktp-filter');
+        var table = details.querySelector('.pzk-ktp-table');
+        if (!sel || !table) return;
+
+        details.dataset.ktpFilterInited = '1';
+
+        var tbody     = table.querySelector('tbody');
+        var thTypeNum = table.querySelector('thead th.pzk-ktp-type-num');
+        if (!tbody) return;
+
+        var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr[data-kind]'));
+
+        function applyFilter(filter) {
+            var counter = 0;
+            var visibleRows = [];
+            var dateGroups  = {};
+
+            // 1. Показ / скрытие строк, нумерация «№ по типу» по слотам
+            rows.forEach(function (tr) {
+                var kind  = tr.dataset.kind || '';
+                var date  = tr.dataset.date || '';
+                var slots = parseInt(tr.dataset.slots, 10) || 1;
+                var show  = (filter === 'all') || (kind === filter) || (kind === 'mixed');
+
+                tr.style.display = show ? '' : 'none';
+
+                var tdTypeNum = tr.querySelector('td.pzk-ktp-type-num');
+                var tdDate    = tr.querySelector('td.pzk-ktp-date');
+
+                if (show) {
+                    var start = counter + 1;
+                    var end   = counter + slots;
+                    counter = end;
+
+                    if (tdTypeNum) {
+                        if (filter === 'all') {
+                            tdTypeNum.style.display = 'none';
+                            tdTypeNum.textContent = '';
+                        } else {
+                            tdTypeNum.style.display = '';
+                            tdTypeNum.textContent = (start === end)
+                                ? String(start)
+                                : start + '-' + end;
+                        }
+                    }
+                    if (tdDate) tdDate.style.display = '';
+
+                    visibleRows.push(tr);
+                    if (!dateGroups[date]) dateGroups[date] = [];
+                    dateGroups[date].push(tr);
+                } else {
+                    if (tdTypeNum) {
+                        tdTypeNum.style.display = 'none';
+                        tdTypeNum.textContent = '';
+                    }
+                    if (tdDate) {
+                        tdDate.style.display = 'none';
+                        tdDate.removeAttribute('rowspan');
+                    }
+                }
+            });
+
+            // 2. Заголовок столбца «№ по типу»
+            if (thTypeNum) {
+                thTypeNum.style.display = (filter === 'all') ? 'none' : '';
+            }
+
+            // 3. Даты: сброс rowspan, потом объединение — только для all
+            visibleRows.forEach(function (tr) {
+                var tdDate = tr.querySelector('td.pzk-ktp-date');
+                if (!tdDate) return;
+                tdDate.style.display = '';
+                tdDate.removeAttribute('rowspan');
+            });
+
+            if (filter === 'all') {
+                Object.keys(dateGroups).forEach(function (date) {
+                    var group = dateGroups[date];
+                    if (group.length <= 1) return;
+                    group.forEach(function (tr, i) {
+                        var tdDate = tr.querySelector('td.pzk-ktp-date');
+                        if (!tdDate) return;
+                        if (i === 0) {
+                            tdDate.setAttribute('rowspan', String(group.length));
+                        } else {
+                            tdDate.style.display = 'none';
+                        }
+                    });
+                });
+            }
+        }
+
+        sel.addEventListener('change', function () {
+            applyFilter(sel.value || 'all');
+        });
+
+        applyFilter(sel.value || 'all');
+    }
+
     function initKtpBlock(details) {
         if (!details || details.dataset.ktpInited === '1') return;
         details.dataset.ktpInited = '1';
@@ -102,6 +203,7 @@ declare(strict_types=1);
                 }).observe(head);
             }
         }
+        initKtpFilter(details);
     }
 
     document.querySelectorAll('.pzk-subject-ktp').forEach(initKtpBlock);
