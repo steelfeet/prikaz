@@ -38,12 +38,32 @@ declare(strict_types=1);
     }
 
     document.addEventListener('click', function (e) {
+        var groupBtn = e.target.closest('[data-open-group-edit]');
+        if (groupBtn) {
+            openInline(
+                groupBtn.getAttribute('data-open-group-edit'),
+                'input:not([type="hidden"]), select',
+                'details.pzk-group-edit'
+            );
+            return;
+        }
+
         var subjBtn = e.target.closest('[data-open-subject-edit]');
         if (subjBtn) {
             openInline(
                 subjBtn.getAttribute('data-open-subject-edit'),
                 'input:not([type="hidden"]), select, textarea',
                 'details.pzk-subject-edit'
+            );
+            return;
+        }
+
+        var studentBtn = e.target.closest('[data-open-student-edit]');
+        if (studentBtn) {
+            openInline(
+                studentBtn.getAttribute('data-open-student-edit'),
+                'input:not([type="hidden"]), select',
+                'details.pzk-student-edit'
             );
             return;
         }
@@ -81,12 +101,6 @@ declare(strict_types=1);
     }
 
     // ===== Фильтр КТП по виду занятий =====
-    //
-    // Значения value в select: all / group / sub.
-    // При all: столбец «№ по типу» скрыт, даты объединены rowspan по группам.
-    // При group/sub: строки других видов скрыты, столбец «№ по типу» показан
-    // и в нём — накопленный номер урока этого типа с учётом слотов:
-    // один слот → «23», два слота → «23-24», три слота → «23-25».
     function initKtpFilter(details) {
         if (!details || details.dataset.ktpFilterInited === '1') return;
         var sel = details.querySelector('.pzk-ktp-filter');
@@ -106,7 +120,6 @@ declare(strict_types=1);
             var visibleRows = [];
             var dateGroups  = {};
 
-            // 1. Показ / скрытие строк, нумерация «№ по типу» по слотам
             rows.forEach(function (tr) {
                 var kind  = tr.dataset.kind || '';
                 var date  = tr.dataset.date || '';
@@ -151,12 +164,10 @@ declare(strict_types=1);
                 }
             });
 
-            // 2. Заголовок столбца «№ по типу»
             if (thTypeNum) {
                 thTypeNum.style.display = (filter === 'all') ? 'none' : '';
             }
 
-            // 3. Даты: сброс rowspan, потом объединение — только для all
             visibleRows.forEach(function (tr) {
                 var tdDate = tr.querySelector('td.pzk-ktp-date');
                 if (!tdDate) return;

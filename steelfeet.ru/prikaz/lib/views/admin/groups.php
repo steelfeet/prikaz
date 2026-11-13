@@ -64,13 +64,14 @@ declare(strict_types=1);
                             <th>Название</th>
                             <th style="width:160px;">Куратор</th>
                             <th>Заметки</th>
-                            <th style="width:260px;">Действия</th>
+                            <th style="width:190px;">Действия</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($adminGroups as $g): ?>
+                            <?php $gid = (int) $g['id']; ?>
                             <tr>
-                                <td><?= (int) $g['id'] ?></td>
+                                <td><?= $gid ?></td>
                                 <td>
                                     <strong><?= e($g['year_name']) ?></strong>
                                     <?php if ((int) $g['year_is_current'] === 1): ?>
@@ -89,53 +90,66 @@ declare(strict_types=1);
                                     <?= e((string) ($g['notes'] ?? '')) ?>
                                 </td>
                                 <td class="pzk-table__actions">
-                                    <details class="pzk-row-details">
-                                        <summary class="pzk-btn pzk-btn--sm">Редактировать</summary>
-                                        <form method="post" action="index.php?action=admin_group_save"
-                                              class="pzk-edit-form" autocomplete="off">
-                                            <?= csrf_field() ?>
-                                            <input type="hidden" name="id" value="<?= (int) $g['id'] ?>">
-                                            <label class="pzk-field">
-                                                <span class="pzk-field__label">Название</span>
-                                                <input type="text" name="name" value="<?= e($g['name']) ?>"
-                                                       required autocomplete="off"
-                                                       class="pzk-field__input pzk-field__input--sm">
-                                            </label>
-                                            <label class="pzk-field">
-                                                <span class="pzk-field__label">Учебный год</span>
-                                                <select name="academic_year_id" required
-                                                        class="pzk-field__input pzk-field__input--sm">
-                                                    <?php foreach ($adminAcademicYears as $ay): ?>
-                                                        <option value="<?= (int) $ay['id'] ?>"
-                                                                <?= (int) $ay['id'] === (int) $g['academic_year_id'] ? 'selected' : '' ?>>
-                                                            <?= e($ay['name']) ?>
-                                                        </option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </label>
-                                            <label class="pzk-field">
-                                                <span class="pzk-field__label">Куратор</span>
-                                                <input type="text" name="curator"
-                                                       value="<?= e((string) ($g['curator'] ?? '')) ?>"
-                                                       autocomplete="off"
-                                                       class="pzk-field__input pzk-field__input--sm">
-                                            </label>
-                                            <label class="pzk-field">
-                                                <span class="pzk-field__label">Заметки</span>
-                                                <input type="text" name="notes"
-                                                       value="<?= e((string) ($g['notes'] ?? '')) ?>"
-                                                       autocomplete="off"
-                                                       class="pzk-field__input pzk-field__input--sm">
-                                            </label>
-                                            <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Сохранить</button>
-                                        </form>
-                                    </details>
+                                    <button type="button" class="pzk-btn pzk-btn--sm"
+                                            data-open-group-edit="group-edit-<?= $gid ?>">
+                                        Редактировать
+                                    </button>
                                     <form method="post" action="index.php?action=admin_group_delete"
                                           onsubmit="return confirm('Удалить группу «<?= e($g['name']) ?>» (<?= e($g['year_name']) ?>)? Студенты останутся, группа исчезнет из списка.');">
                                         <?= csrf_field() ?>
-                                        <input type="hidden" name="id" value="<?= (int) $g['id'] ?>">
+                                        <input type="hidden" name="id" value="<?= $gid ?>">
                                         <button type="submit" class="pzk-btn pzk-btn--sm">Удалить</button>
                                     </form>
+                                </td>
+                            </tr>
+                            <tr class="pzk-group-edit-row">
+                                <td colspan="6">
+                                    <details class="pzk-group-edit" id="group-edit-<?= $gid ?>">
+                                        <summary style="display:none"></summary>
+                                        <form method="post" action="index.php?action=admin_group_save"
+                                              class="pzk-group-edit__form" autocomplete="off">
+                                            <?= csrf_field() ?>
+                                            <input type="hidden" name="id" value="<?= $gid ?>">
+                                            <div class="pzk-form__grid">
+                                                <label class="pzk-field">
+                                                    <span class="pzk-field__label">Название</span>
+                                                    <input type="text" name="name" required
+                                                           value="<?= e($g['name']) ?>"
+                                                           autocomplete="off"
+                                                           class="pzk-field__input pzk-field__input--sm">
+                                                </label>
+                                                <label class="pzk-field">
+                                                    <span class="pzk-field__label">Учебный год</span>
+                                                    <select name="academic_year_id" required
+                                                            class="pzk-field__input pzk-field__input--sm">
+                                                        <?php foreach ($adminAcademicYears as $ay): ?>
+                                                            <option value="<?= (int) $ay['id'] ?>"
+                                                                    <?= (int) $ay['id'] === (int) $g['academic_year_id'] ? 'selected' : '' ?>>
+                                                                <?= e($ay['name']) ?>
+                                                            </option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </label>
+                                                <label class="pzk-field">
+                                                    <span class="pzk-field__label">Куратор</span>
+                                                    <input type="text" name="curator"
+                                                           value="<?= e((string) ($g['curator'] ?? '')) ?>"
+                                                           autocomplete="off"
+                                                           class="pzk-field__input pzk-field__input--sm">
+                                                </label>
+                                                <label class="pzk-field">
+                                                    <span class="pzk-field__label">Заметки</span>
+                                                    <input type="text" name="notes"
+                                                           value="<?= e((string) ($g['notes'] ?? '')) ?>"
+                                                           autocomplete="off"
+                                                           class="pzk-field__input pzk-field__input--sm">
+                                                </label>
+                                            </div>
+                                            <div class="pzk-group-edit__actions">
+                                                <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">Сохранить</button>
+                                            </div>
+                                        </form>
+                                    </details>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

@@ -28,9 +28,6 @@ declare(strict_types=1);
 }
 .pzk-table-wrap > .pzk-table { border: none; }
 
-/* В секции «Предметы» обёртка идёт без своего overflow, чтобы
-   sticky-шапка КТП цеплялась к viewport, а не к scroll-контейнеру.
-   На узких экранах (см. media query) overflow возвращается. */
 .pzk-table-wrap--subjects {
     overflow: visible;
 }
@@ -434,9 +431,7 @@ declare(strict_types=1);
     padding: 8px 12px;
     margin-bottom: 8px;
 }
-.pzk-sem-card:last-child {
-    margin-bottom: 0;
-}
+.pzk-sem-card:last-child { margin-bottom: 0; }
 .pzk-sem-card__head {
     display: flex;
     justify-content: space-between;
@@ -528,13 +523,8 @@ declare(strict_types=1);
     border: 1px solid #e8dcc0;
     border-radius: 2px;
 }
-.pzk-holiday-form .pzk-field__label {
-    font-size: 0.92rem;
-}
-.pzk-holiday-form .pzk-field__input {
-    padding: 5px 9px;
-    font-size: 0.9rem;
-}
+.pzk-holiday-form .pzk-field__label { font-size: 0.92rem; }
+.pzk-holiday-form .pzk-field__input { padding: 5px 9px; font-size: 0.9rem; }
 
 /* ===== Строка редактирования предмета ===== */
 .pzk-subject-edit-row > td {
@@ -542,9 +532,7 @@ declare(strict_types=1);
     background: #fbf7ec;
     border-bottom: 1px solid rgba(26, 26, 26, 0.1);
 }
-.pzk-subject-edit > summary {
-    display: none;
-}
+.pzk-subject-edit > summary { display: none; }
 .pzk-subject-edit__form {
     padding: 12px 14px;
     background: #fbf7ec;
@@ -554,6 +542,28 @@ declare(strict_types=1);
     gap: 10px;
 }
 .pzk-subject-edit__actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 8px;
+    border-top: 1px solid #e8dcc0;
+}
+
+/* ===== Строка редактирования студента ===== */
+.pzk-student-edit-row > td {
+    padding: 0 !important;
+    background: #fbf7ec;
+    border-bottom: 1px solid rgba(26, 26, 26, 0.1);
+}
+.pzk-student-edit > summary { display: none; }
+.pzk-student-edit__form {
+    padding: 12px 14px;
+    background: #fbf7ec;
+    border-left: 3px solid #8b6914;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.pzk-student-edit__actions {
     display: flex;
     justify-content: flex-end;
     padding-top: 8px;
@@ -647,13 +657,8 @@ declare(strict_types=1);
 }
 .pzk-topic-edit > summary::-webkit-details-marker { display: none; }
 .pzk-topic-edit > summary::marker { content: ''; }
-.pzk-topic-edit > summary:hover {
-    background: rgba(139, 105, 20, 0.05);
-}
-.pzk-topic-edit[open] > summary {
-    font-weight: 600;
-    color: #6b5010;
-}
+.pzk-topic-edit > summary:hover { background: rgba(139, 105, 20, 0.05); }
+.pzk-topic-edit[open] > summary { font-weight: 600; color: #6b5010; }
 .pzk-topic-edit__form {
     margin-top: 6px;
     padding: 8px 10px;
@@ -675,7 +680,6 @@ declare(strict_types=1);
     justify-content: flex-end;
 }
 
-/* Ссылка «+ Добавить ниже» под текстом темы */
 .pzk-topic-below { margin-top: 4px; }
 .pzk-topic-below__summary {
     display: inline-block;
@@ -748,9 +752,7 @@ declare(strict_types=1);
     border-radius: 3px;
     font-weight: 700;
 }
-.pzk-ktp__match-value strong {
-    font-weight: 700;
-}
+.pzk-ktp__match-value strong { font-weight: 700; }
 .pzk-ktp__holidays {
     font-size: 0.85rem;
     color: #b91c1c;
@@ -801,6 +803,15 @@ declare(strict_types=1);
     gap: 6px;
     align-items: flex-start;
     flex-wrap: wrap;
+}
+.pzk-ktp-filter {
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 0.85rem;
+    padding: 4px 8px;
+    border: 1px solid #d4c8a8;
+    background: #fff;
+    color: #1a1a1a;
+    border-radius: 2px;
 }
 
 /* ===== Расписание ===== */
@@ -867,5 +878,38 @@ declare(strict_types=1);
     .pzk-subject-edit__form { padding: 10px 12px; }
     .pzk-subject-edit__actions { justify-content: stretch; }
     .pzk-subject-edit__actions .pzk-btn { width: 100%; justify-content: center; }
+
+    .pzk-student-edit__form { padding: 10px 12px; }
+    .pzk-student-edit__actions { justify-content: stretch; }
+    .pzk-student-edit__actions .pzk-btn { width: 100%; justify-content: center; }
+}
+
+
+/* ===== Строка редактирования группы ===== */
+.pzk-group-edit-row > td {
+    padding: 0 !important;
+    background: #fbf7ec;
+    border-bottom: 1px solid rgba(26, 26, 26, 0.1);
+}
+.pzk-group-edit > summary { display: none; }
+.pzk-group-edit__form {
+    padding: 12px 14px;
+    background: #fbf7ec;
+    border-left: 3px solid #8b6914;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.pzk-group-edit__actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 8px;
+    border-top: 1px solid #e8dcc0;
+}
+
+@media (max-width: 900px) {
+    .pzk-group-edit__form { padding: 10px 12px; }
+    .pzk-group-edit__actions { justify-content: stretch; }
+    .pzk-group-edit__actions .pzk-btn { width: 100%; justify-content: center; }
 }
 </style>

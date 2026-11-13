@@ -3,7 +3,12 @@ declare(strict_types=1);
 
 $tab = $_GET['tab'] ?? '';
 
-// ===== Учитель / Студент / Родитель — плоское меню =====
+// ===== Студент: верхняя навигация не нужна — разделы внутри student.php =====
+if ($viewRole === 'student') {
+    return;
+}
+
+// ===== Учитель / Родитель — плоское меню =====
 if ($viewRole !== 'admin') {
     if ($viewRole === 'teacher') {
         $links = [
@@ -146,6 +151,7 @@ $isAcademicActive = in_array($section, $academicSections, true);
 
     var btn  = drop.querySelector('.mainnav__drop-btn');
     var menu = drop.querySelector('.mainnav__drop-menu');
+    if (!btn || !menu) return;
 
     function close() {
         drop.classList.remove('is-open');
@@ -165,9 +171,7 @@ $isAcademicActive = in_array($section, $academicSections, true);
     });
 
     menu.querySelectorAll('a').forEach(function (a) {
-        a.addEventListener('click', function () {
-            close();
-        });
+        a.addEventListener('click', close);
     });
 
     document.addEventListener('click', function (e) {

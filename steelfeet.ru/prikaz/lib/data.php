@@ -98,7 +98,15 @@ $parentChild    = null;
 $teacherProfile = null;
 
 if (in_array('student', $currentUser['roles'], true)) {
-    $stmt = $pdo->prepare('SELECT * FROM students WHERE user_id = :u LIMIT 1');
+    $stmt = $pdo->prepare(
+        'SELECT s.*, u.login, u.email,
+                g.name AS group_name, ay.name AS year_name
+         FROM students s
+         JOIN users u ON u.id = s.user_id
+         LEFT JOIN groups g ON g.id = s.group_id
+         LEFT JOIN academic_years ay ON ay.id = g.academic_year_id
+         WHERE s.user_id = :u LIMIT 1'
+    );
     $stmt->execute([':u' => (int) $currentUser['id']]);
     $studentProfile = $stmt->fetch() ?: null;
 }
@@ -164,6 +172,8 @@ $adminCurrentYear = null;
 $adminGroups = [];
 $adminGroupsFilterYear = 0;
 $defaultGroupYearId = 0;
+$adminStudentsFilterYear = 0;
+$adminStudentsFilterGroup = 0;
 $adminSubjects = [];
 $adminSubjectsFilterYear = 0;
 $adminSubjectsFilterGroup = 0;
@@ -193,7 +203,6 @@ if ($viewRole === 'admin') {
          GROUP BY u.id ORDER BY u.id"
     )->fetchAll();
 
-    $adminStudents = $pdo->query('SELECT * FROM students ORDER BY full_name')->fetchAll();
     $adminParents  = $pdo->query('SELECT * FROM parents ORDER BY full_name')->fetchAll();
     $adminLessons  = $pdo->query('SELECT * FROM lessons ORDER BY ord')->fetchAll();
     $adminProjects = $mockProjects;
@@ -251,6 +260,51 @@ if ($viewRole === 'admin') {
     } elseif ($adminAcademicYears !== []) {
         $defaultGroupYearId = (int) $adminAcademicYears[0]['id'];
     }
+
+    // ===== Все группы (без фильтра) — для селектов =====
+    $adminAllGroups = $pdo->query(
+        'SELECT g.id, g.name, g.academic_year_id, ay.name AS year_name
+         FROM groups g
+         JOIN academic_years ay ON ay.id = g.academic_year_id
+         ORDER BY ay.start_date DESC, g.name'
+    )->fetchAll();
+
+    // ===== Студенты (с фильтром по году/группе) =====
+    if (isset($_GET['student_year'])) {
+        $adminStudentsFilterYear = (int) $_GET['student_year'];
+    } elseif ($adminCurrentYear !== null) {
+        $adminStudentsFilterYear = (int) $adminCurrentYear['id'];
+    } elseif ($adminAcademicYears !== []) {
+        $adminStudentsFilterYear = (int) $adminAcademicYears[0]['id'];
+    } else {
+        $adminStudentsFilterYear = 0;
+    }
+    $adminStudentsFilterGroup = isset($_GET['student_group']) ? (int) $_GET['student_group'] : 0;
+
+    $sql = 'SELECT s.*, u.login, u.email, u.is_active AS user_is_active,
+                   g.name AS group_name, ay.name AS year_name,
+                   ay.id AS academic_year_id
+            FROM students s
+            JOIN users u ON u.id = s.user_id
+            LEFT JOIN groups g ON g.id = s.group_id
+            LEFT JOIN academic_years ay ON ay.id = g.academic_year_id';
+    $params = [];
+    $where  = [];
+    if ($adminStudentsFilterYear > 0) {
+        $where[] = 'g.academic_year_id = :y';
+        $params[':y'] = $adminStudentsFilterYear;
+    }
+    if ($adminStudentsFilterGroup > 0) {
+        $where[] = 's.group_id = :g';
+        $params[':g'] = $adminStudentsFilterGroup;
+    }
+    if ($where !== []) {
+        $sql .= ' WHERE ' . implode(' AND ', $where);
+    }
+    $sql .= ' ORDER BY s.full_name';
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $adminStudents = $stmt->fetchAll();
 
     // ===== Семестры =====
     $adminAllSemesters = $pdo->query(
@@ -377,13 +431,6 @@ if ($viewRole === 'admin') {
         }
         unset($subj);
     }
-
-    $adminAllGroups = $pdo->query(
-        'SELECT g.id, g.name, g.academic_year_id, ay.name AS year_name
-         FROM groups g
-         JOIN academic_years ay ON ay.id = g.academic_year_id
-         ORDER BY ay.start_date DESC, g.name'
-    )->fetchAll();
 
     foreach ($adminAllSemesters as $sm) {
         if ($adminSubjectsFilterYear === 0 || (int) $sm['academic_year_id'] === $adminSubjectsFilterYear) {

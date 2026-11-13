@@ -170,3 +170,4 @@ require_once __DIR__ . '/projects.php';
 require_once __DIR__ . '/schedule.php';
 require_once __DIR__ . '/ktp.php';
 require_once __DIR__ . '/curriculum.php';
+require PRIKAZ_ROOT . '/lib/students.php';

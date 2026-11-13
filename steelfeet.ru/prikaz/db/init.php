@@ -331,8 +331,7 @@ if (!$isCli) {
 }
 
 // =============================================================================
-// Схема. Таблица subjects сюда НЕ входит — её создаём отдельно ниже,
-// потому что может существовать старая версия, которую нужно мигрировать.
+// Схема. Таблица subjects создаётся отдельно (может быть старая схема).
 // =============================================================================
 $pdo->exec(<<<'SQL'
 CREATE TABLE IF NOT EXISTS roles (
@@ -369,7 +368,7 @@ CREATE TABLE IF NOT EXISTS students (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     full_name  TEXT NOT NULL,
-    group_name TEXT NOT NULL,
+    group_name TEXT NOT NULL DEFAULT '',
     alias      TEXT UNIQUE,
     is_active  INTEGER NOT NULL DEFAULT 1
 );
@@ -540,12 +539,7 @@ SQL);
 init_out('✓ Схема применена', $isCli);
 
 // =============================================================================
-// subjects + curriculum + schedule_entries + ktp_entries.
-//
-// Старую схему subjects (с academic_year_id + semester_practice) сносим
-// целиком, вместе с curriculum и schedule_entries, которые на неё ссылаются.
-// ktp_entries — новая сущность; при миграции старых БД её просто не было,
-// создаётся при первом прогоне. На subjects ссылается каскадно.
+// subjects + curriculum + schedule_entries + ktp_entries
 // =============================================================================
 $subjectCols = [];
 foreach ($pdo->query('PRAGMA table_info(subjects)')->fetchAll() as $col) {
@@ -658,6 +652,85 @@ if ($needRecreate) {
 } else {
     $pdo->exec($createSubjectsSql);
     init_out('✓ subjects, curriculum, schedule_entries, ktp_entries на месте', $isCli);
+}
+
+// =============================================================================
+// Миграция students: last_name, first_name, middle_name, vk_url, telegram, group_id
+// =============================================================================
+$studentCols = [];
+foreach ($pdo->query('PRAGMA table_info(students)')->fetchAll() as $col) {
+    $studentCols[$col['name']] = true;
+}
+
+$studentNewCols = [
+    'last_name'   => 'TEXT',
+    'first_name'  => 'TEXT',
+    'middle_name' => 'TEXT',
+    'vk_url'      => 'TEXT',
+    'telegram'    => 'TEXT',
+    'group_id'    => 'INTEGER REFERENCES groups(id)',
+];
+
+$studentAdded = [];
+foreach ($studentNewCols as $colName => $colType) {
+    if (!isset($studentCols[$colName])) {
+        $pdo->exec("ALTER TABLE students ADD COLUMN {$colName} {$colType}");
+        $studentAdded[] = $colName;
+    }
+}
+
+$pdo->exec('CREATE INDEX IF NOT EXISTS idx_students_group ON students(group_id)');
+
+if ($studentAdded !== []) {
+    init_out('✓ students: добавлены колонки ' . implode(', ', $studentAdded), $isCli);
+} else {
+    init_out('→ students: колонки на месте', $isCli);
+}
+
+// Заполнение last_name / first_name / middle_name из full_name
+$stmt = $pdo->query(
+    "SELECT id, full_name FROM students
+     WHERE (last_name IS NULL OR last_name = '') AND full_name <> ''"
+);
+$needFill = $stmt->fetchAll();
+if ($needFill !== []) {
+    $upd = $pdo->prepare(
+        'UPDATE students SET last_name = :l, first_name = :f, middle_name = :m WHERE id = :id'
+    );
+    foreach ($needFill as $row) {
+        $parts = preg_split('/\s+/u', trim((string) $row['full_name']), -1, PREG_SPLIT_NO_EMPTY);
+        $last   = $parts[0] ?? '';
+        $first  = $parts[1] ?? '';
+        $middle = count($parts) > 2 ? implode(' ', array_slice($parts, 2)) : null;
+        $upd->execute([':l' => $last, ':f' => $first, ':m' => $middle, ':id' => (int) $row['id']]);
+    }
+    init_out('✓ students: заполнены last_name/first_name для ' . count($needFill) . ' записей', $isCli);
+}
+
+// Привязка старых group_name к group_id в текущем году
+$stmt = $pdo->query(
+    "SELECT id, group_name FROM students
+     WHERE group_id IS NULL AND group_name IS NOT NULL AND group_name <> ''"
+);
+$needGroup = $stmt->fetchAll();
+if ($needGroup !== []) {
+    $stmtY = $pdo->query("SELECT id FROM academic_years WHERE is_current = 1 LIMIT 1");
+    $curYear = (int) $stmtY->fetchColumn();
+    if ($curYear > 0) {
+        $upd = $pdo->prepare(
+            'UPDATE students SET group_id = (
+                 SELECT g.id FROM groups g
+                 WHERE g.academic_year_id = :y AND g.name = :n
+                 LIMIT 1
+             ) WHERE id = :id'
+        );
+        $linked = 0;
+        foreach ($needGroup as $row) {
+            $upd->execute([':y' => $curYear, ':n' => (string) $row['group_name'], ':id' => (int) $row['id']]);
+            $linked += $upd->rowCount();
+        }
+        init_out('✓ students: привязаны к группам текущего года (' . $linked . ' записей)', $isCli);
+    }
 }
 
 // =============================================================================
@@ -783,16 +856,19 @@ $help = [
      "Проект проходит 4 фазы: Выбор темы → Работа над проектом → Предварительная защита → Защита.\n\nНад одним проектом может работать несколько студентов.\nУ одного студента может быть несколько проектов.\nВозврат к предыдущей фазе — нормальный процесс доработки.",
      'all'],
     ['prikaz-ktp', 'Как работает КТП',
-     "КТП — Календарно-Тематическое Планирование.\n\nЭто распределение тем предмета по датам уроков семестра. Строится по темам предмета и расписанию.\n\nЕсли в неделю 1 урок — на тему 1 урок, если 2 — 2 урока, если 3 — 2 на одну тему и 1 на следующую, если 4 — по 2 на тему. Подгруппы идут параллельно по одной теме. Праздничные дни пропускаются.\n\nПри редактировании: «+ Ещё одно» — добавить один урок к текущей теме, «Удалить» — убрать тему, номера и даты пересчитаются. «Пересоздать» — сгенерировать КТП заново по текущим темам и расписанию.",
+     "КТП — Календарно-Тематическое Планирование.\n\nЭто распределение тем предмета по датам уроков семестра. Строится по темам предмета и расписанию.\n\nГрупповые занятия разбиваются на пары; подгруппы за день идут как одна тема. Праздники пропускаются.\n\nПри редактировании: «+ Ещё одно» — дублировать тему на следующий блок, «Удалить» — убрать тему, «Перегенерировать» — сгенерировать заново по текущим темам и расписанию.",
      'admin'],
     ['prikaz-aliases', 'Псевдонимы и персональные данные',
-     "В репозиториях (Gogs, GitHub) используются только псевдонимы вида s-<группа>-<номер>.\n\nРасшифровка «псевдоним → ФИО» хранится только в Приказе. Это требование 152-ФЗ.\n\nРаздел «Студенты» в админке показывает соответствие.",
+     "В репозиториях (Gogs, GitHub) используются только логины (они же псевдонимы).\n\nРасшифровка «логин → ФИО» хранится только в Приказе. Это требование 152-ФЗ.\n\nРаздел «Студенты» в админке показывает соответствие.",
      'admin'],
     ['prikaz-groups', 'Группы и учебный год',
      "Группы принадлежат учебному году. Каждый год — свой набор групп.\n\nГруппа «46» в 2024/2025 и «46» в 2025/2026 — разные сущности. У каждой своя история и свой состав.\n\nПри удалении учебного года все его группы удаляются. Студенты и оценки остаются, но привязка к группе теряется.",
      'admin'],
     ['prikaz-admin', 'Админ: как управлять пользователями',
-     "Только администратор может создавать пользователей.\n\n1. Раздел «Пользователи».\n2. «Создать» — логин, ФИО, роль, временный пароль.\n3. Передать пароль пользователю.\n4. Смена пароля — кнопка «Сбросить».",
+     "Только администратор может создавать пользователей.\n\n1. Раздел «Пользователи» или «Студенты».\n2. «Создать» — логин, ФИО, роль, временный пароль.\n3. Передать пароль пользователю.\n4. Смена пароля — кнопка «Сбросить».",
+     'admin'],
+    ['prikaz-students-bulk', 'Массовое добавление студентов',
+     "Одна строка — один студент: Фамилия Имя Отчество, логин. Отчество опционально. Пустые строки игнорируются.\n\nПароль по умолчанию — 1111, email — логин@mail.ru.\n\nПосле добавления студент должен сменить пароль в личном кабинете.",
      'admin'],
 ];
 $stmt = $pdo->prepare('INSERT OR IGNORE INTO help_articles (slug, title, body_md, role_visibility) VALUES (:s, :t, :b, :r)');
