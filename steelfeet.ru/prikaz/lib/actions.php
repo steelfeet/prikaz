@@ -16,7 +16,11 @@ $pdo = db();
 $exact = [
     'logout'               => 'auth.php',
     'change_own_password'  => 'auth.php',
+
     'grade_set'            => 'journal.php',
+    'journal_mark_set'     => 'journal.php',
+    'journal_lesson_note_set' => 'journal.php',
+
     'project_move_phase'   => 'projects.php',
     'student_profile_save' => 'students.php',
     'help_feedback'        => 'misc.php',
@@ -42,6 +46,8 @@ $prefixes = [
 
     'admin_lesson_'        => 'lessons.php',
     'admin_project_'       => 'projects.php',
+
+    'journal_'             => 'journal.php',
 ];
 
 $file = null;

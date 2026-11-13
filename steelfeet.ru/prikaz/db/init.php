@@ -654,6 +654,47 @@ if ($needRecreate) {
     init_out('✓ subjects, curriculum, schedule_entries, ktp_entries на месте', $isCli);
 }
 
+
+// =============================================================================
+// Журнал: journal_marks и journal_lesson_notes.
+// Оценки и общие примечания к урокам. Привязаны к предмету + типу занятия
+// (group / sub) + дате. У оценок — дополнительно student_id.
+// =============================================================================
+$pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS journal_marks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_id  INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    date        TEXT NOT NULL,
+    kind        TEXT NOT NULL DEFAULT 'group',
+    mark        TEXT,
+    note        TEXT,
+    updated_by  INTEGER REFERENCES users(id),
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (subject_id, student_id, date, kind)
+);
+CREATE INDEX IF NOT EXISTS idx_journal_marks_subject ON journal_marks(subject_id);
+CREATE INDEX IF NOT EXISTS idx_journal_marks_student ON journal_marks(student_id);
+
+CREATE TABLE IF NOT EXISTS journal_lesson_notes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_id  INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    date        TEXT NOT NULL,
+    kind        TEXT NOT NULL DEFAULT 'group',
+    note        TEXT,
+    homework    TEXT,
+    updated_by  INTEGER REFERENCES users(id),
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (subject_id, date, kind)
+);
+CREATE INDEX IF NOT EXISTS idx_journal_lesson_notes_subject ON journal_lesson_notes(subject_id);
+SQL);
+init_out('✓ journal_marks, journal_lesson_notes на месте', $isCli);
+
+
+
 // =============================================================================
 // Миграция students: last_name, first_name, middle_name, vk_url, telegram, group_id
 // =============================================================================
@@ -886,8 +927,8 @@ $tables = [
     'project_history', 'parent_visits', 'audit_log', 'help_articles',
     'help_feedback', 'academic_years', 'groups', 'semesters', 'subjects',
     'curriculum', 'schedule_entries', 'holidays', 'ktp_entries',
-];
-$counts = [];
+    'journal_marks', 'journal_lesson_notes',
+]; [];
 foreach ($tables as $t) {
     try {
         $counts[$t] = (int) $pdo->query("SELECT COUNT(*) FROM {$t}")->fetchColumn();

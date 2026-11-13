@@ -102,6 +102,7 @@ require PRIKAZ_ROOT . '/lib/data.php';
                 case 'student': require PRIKAZ_ROOT . '/lib/views/student.php'; break;
                 case 'parent':  require PRIKAZ_ROOT . '/lib/views/parent.php';  break;
                 case 'admin':   require PRIKAZ_ROOT . '/lib/views/admin.php';   break;
+                case 'journal': require PRIKAZ_ROOT . '/lib/views/journal.php'; break;
                 default: echo '<div class="uni-empty">Страница не найдена.</div>';
             }
             ?>

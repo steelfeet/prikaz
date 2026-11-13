@@ -1,9 +1,12 @@
 <?php
 declare(strict_types=1);
 
-$tab = $_GET['tab'] ?? '';
+$tab     = $_GET['tab'] ?? '';
+$section = $_GET['section'] ?? 'academic_years';
+$pageNow = $_GET['page'] ?? '';
+$isJournalPage = ($pageNow === 'journal');
 
-// ===== Студент: верхняя навигация не нужна — разделы внутри student.php =====
+// ===== Студент: верхнего меню нет — разделы во вкладках =====
 if ($viewRole === 'student') {
     return;
 }
@@ -11,17 +14,18 @@ if ($viewRole === 'student') {
 // ===== Учитель / Родитель — плоское меню =====
 if ($viewRole !== 'admin') {
     if ($viewRole === 'teacher') {
-        $links = [
-            'journal'  => '📓 Журнал',
-            'projects' => '📋 Проекты',
-            'summary'  => '📊 Сводка',
-        ];
-    } else {
-        $links = [
-            'projects' => '📋 Мои проекты',
-            'journal'  => '📓 Журнал',
-        ];
+        echo '<nav class="mainnav"><span class="mainnav__caption">Разделы</span>';
+        echo '<a class="' . ($isJournalPage ? 'active' : '') . '" href="?page=journal">📖 Журнал</a>';
+        echo '<a class="' . ($tab === 'projects' ? 'active' : '') . '" href="?page=teacher&tab=projects">📋 Проекты</a>';
+        echo '<a class="' . ($tab === 'summary'  ? 'active' : '') . '" href="?page=teacher&tab=summary">📊 Сводка</a>';
+        echo '</nav>';
+        return;
     }
+
+    $links = [
+        'projects' => '📋 Мои проекты',
+        'journal'  => '📓 Журнал',
+    ];
     echo '<nav class="mainnav"><span class="mainnav__caption">Разделы</span>';
     foreach ($links as $k => $label) {
         $active = ($tab === $k) ? 'active' : '';
@@ -33,16 +37,11 @@ if ($viewRole !== 'admin') {
 }
 
 // ===== Админ =====
-$section = $_GET['section'] ?? 'academic_years';
 $academicSections = ['academic_years', 'groups', 'subjects'];
 $isAcademicActive = in_array($section, $academicSections, true);
 ?>
 <style>
-/* ===== Выпадающий блок в главном меню (только админка) ===== */
-.mainnav__drop {
-    position: relative;
-    display: inline-block;
-}
+.mainnav__drop { position: relative; display: inline-block; }
 .mainnav__drop-btn {
     padding: 0.5rem 0.75rem;
     font-size: 0.9rem;
@@ -58,24 +57,14 @@ $isAcademicActive = in_array($section, $academicSections, true);
     user-select: none;
     transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
-.mainnav__drop-btn:hover {
-    background: rgba(139, 105, 20, 0.1);
-    color: #1a1a1a;
-    border-bottom-color: var(--color-accent, #8b6914);
-}
+.mainnav__drop-btn:hover,
 .mainnav__drop-btn.is-active {
     background: rgba(139, 105, 20, 0.1);
     border-bottom-color: var(--color-accent, #8b6914);
     color: #1a1a1a;
 }
-.mainnav__drop-arrow {
-    font-size: 0.65em;
-    opacity: 0.6;
-    transition: transform 0.18s;
-}
-.mainnav__drop.is-open .mainnav__drop-arrow {
-    transform: rotate(180deg);
-}
+.mainnav__drop-arrow { font-size: 0.65em; opacity: 0.6; transition: transform 0.18s; }
+.mainnav__drop.is-open .mainnav__drop-arrow { transform: rotate(180deg); }
 .mainnav__drop-menu {
     position: absolute;
     top: 100%;
@@ -88,9 +77,7 @@ $isAcademicActive = in_array($section, $academicSections, true);
     padding: 6px 0;
     display: none;
 }
-.mainnav__drop.is-open .mainnav__drop-menu {
-    display: block;
-}
+.mainnav__drop.is-open .mainnav__drop-menu { display: block; }
 .mainnav__drop-menu a {
     display: block;
     padding: 9px 18px;
@@ -114,6 +101,8 @@ $isAcademicActive = in_array($section, $academicSections, true);
 
 <nav class="mainnav">
     <span class="mainnav__caption">Админка</span>
+
+    <a class="<?= $isJournalPage ? 'active' : '' ?>" href="?page=journal">📖 Журнал</a>
 
     <div class="mainnav__drop" id="academic-drop">
         <button type="button"
@@ -145,41 +134,19 @@ $isAcademicActive = in_array($section, $academicSections, true);
 <script>
 (function () {
     'use strict';
-
     var drop = document.getElementById('academic-drop');
     if (!drop) return;
-
     var btn  = drop.querySelector('.mainnav__drop-btn');
     var menu = drop.querySelector('.mainnav__drop-menu');
     if (!btn || !menu) return;
-
-    function close() {
-        drop.classList.remove('is-open');
-        btn.setAttribute('aria-expanded', 'false');
-    }
-    function open() {
-        drop.classList.add('is-open');
-        btn.setAttribute('aria-expanded', 'true');
-    }
-    function toggle() {
-        drop.classList.contains('is-open') ? close() : open();
-    }
-
+    function close() { drop.classList.remove('is-open'); btn.setAttribute('aria-expanded', 'false'); }
+    function open()  { drop.classList.add('is-open');    btn.setAttribute('aria-expanded', 'true');  }
     btn.addEventListener('click', function (e) {
         e.stopPropagation();
-        toggle();
+        drop.classList.contains('is-open') ? close() : open();
     });
-
-    menu.querySelectorAll('a').forEach(function (a) {
-        a.addEventListener('click', close);
-    });
-
-    document.addEventListener('click', function (e) {
-        if (!drop.contains(e.target)) close();
-    });
-
-    document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') close();
-    });
+    menu.querySelectorAll('a').forEach(function (a) { a.addEventListener('click', close); });
+    document.addEventListener('click', function (e) { if (!drop.contains(e.target)) close(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
 })();
 </script>

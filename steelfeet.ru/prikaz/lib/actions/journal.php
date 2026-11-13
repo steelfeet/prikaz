@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+// ===== ОЦЕНКА: поставить / изменить (старая модель lessons/grades) =====
 if ($action === 'grade_set') {
     if (!in_array('teacher', $currentUser['roles'], true) && !in_array('admin', $currentUser['roles'], true)) {
         http_response_code(403); exit('Доступ запрещён');
@@ -39,4 +40,110 @@ if ($action === 'grade_set') {
     }
     flash_set('success', 'Оценка сохранена.');
     redirect('index.php?page=teacher&tab=journal');
+}
+
+// ===== ЖУРНАЛ: сохранить оценку (новая модель, AJAX) =====
+if ($action === 'journal_mark_set') {
+    if (!in_array('teacher', $currentUser['roles'], true) && !in_array('admin', $currentUser['roles'], true)) {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Доступ запрещён.']);
+        http_response_code(403); exit('Доступ запрещён');
+    }
+
+    $subjectId = (int) ($_POST['subject_id'] ?? 0);
+    $studentId = (int) ($_POST['student_id'] ?? 0);
+    $date      = trim((string) ($_POST['date'] ?? ''));
+    $kind      = (string) ($_POST['kind'] ?? 'group');
+    $mark      = trim((string) ($_POST['mark'] ?? ''));
+    $note      = trim((string) ($_POST['note'] ?? ''));
+    $page      = (int) ($_POST['page'] ?? -1);
+
+    if (!in_array($kind, journal_kinds(), true)) {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Неверный тип занятия.']);
+        flash_set('danger', 'Неверный тип занятия.');
+        redirect('index.php?page=journal');
+    }
+    if ($subjectId <= 0 || $studentId <= 0 || $date === '') {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Не хватает данных.']);
+        flash_set('danger', 'Не хватает данных.');
+        redirect('index.php?page=journal');
+    }
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Неверная дата.']);
+        flash_set('danger', 'Неверная дата.');
+        redirect('index.php?page=journal');
+    }
+    if ($mark !== '' && !journal_valid_mark($mark)) {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Неверная оценка.']);
+        flash_set('danger', 'Неверная оценка.');
+        redirect('index.php?page=journal');
+    }
+
+    try {
+        journal_mark_apply($subjectId, $studentId, $date, $kind, $mark, $note, (int) $currentUser['id'], $pdo);
+        audit_log((int) $currentUser['id'], 'journal_mark_set', 'journal_mark', $studentId,
+            'subject=' . $subjectId . ' date=' . $date . ' kind=' . $kind . ' mark=' . $mark);
+
+        if (wants_json()) {
+            json_response([
+                'ok'         => true,
+                'html'       => journal_render_grid($subjectId, $kind, $page, $currentUser),
+                'subject_id' => $subjectId,
+            ]);
+        }
+        flash_set('success', 'Оценка сохранена.');
+    } catch (Throwable $e) {
+        if (wants_json()) json_response(['ok' => false, 'error' => $e->getMessage()]);
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect('index.php?page=journal&subject=' . $subjectId . '&kind=' . $kind . '&p=' . $page);
+}
+
+// ===== ЖУРНАЛ: сохранить примечание к уроку и ДЗ (AJAX) =====
+if ($action === 'journal_lesson_note_set') {
+    if (!in_array('teacher', $currentUser['roles'], true) && !in_array('admin', $currentUser['roles'], true)) {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Доступ запрещён.']);
+        http_response_code(403); exit('Доступ запрещён');
+    }
+
+    $subjectId = (int) ($_POST['subject_id'] ?? 0);
+    $date      = trim((string) ($_POST['date'] ?? ''));
+    $kind      = (string) ($_POST['kind'] ?? 'group');
+    $note      = trim((string) ($_POST['note'] ?? ''));
+    $homework  = trim((string) ($_POST['homework'] ?? ''));
+    $page      = (int) ($_POST['page'] ?? -1);
+
+    if (!in_array($kind, journal_kinds(), true)) {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Неверный тип занятия.']);
+        flash_set('danger', 'Неверный тип занятия.');
+        redirect('index.php?page=journal');
+    }
+    if ($subjectId <= 0 || $date === '') {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Не хватает данных.']);
+        flash_set('danger', 'Не хватает данных.');
+        redirect('index.php?page=journal');
+    }
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        if (wants_json()) json_response(['ok' => false, 'error' => 'Неверная дата.']);
+        flash_set('danger', 'Неверная дата.');
+        redirect('index.php?page=journal');
+    }
+
+    try {
+        journal_lesson_note_apply($subjectId, $date, $kind, $note, $homework, (int) $currentUser['id'], $pdo);
+        audit_log((int) $currentUser['id'], 'journal_lesson_note_set', 'journal_lesson_note', $subjectId,
+            'date=' . $date . ' kind=' . $kind);
+
+        if (wants_json()) {
+            json_response([
+                'ok'         => true,
+                'html'       => journal_render_grid($subjectId, $kind, $page, $currentUser),
+                'subject_id' => $subjectId,
+            ]);
+        }
+        flash_set('success', 'Примечание к уроку сохранено.');
+    } catch (Throwable $e) {
+        if (wants_json()) json_response(['ok' => false, 'error' => $e->getMessage()]);
+        flash_set('danger', 'Ошибка: ' . $e->getMessage());
+    }
+    redirect('index.php?page=journal&subject=' . $subjectId . '&kind=' . $kind . '&p=' . $page);
 }
