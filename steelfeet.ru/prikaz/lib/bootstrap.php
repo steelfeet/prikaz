@@ -8,15 +8,16 @@ if (!is_array($__cfg)) {
 }
 
 define('PRIKAZ_ROOT',         $GLOBALS['PRIKAZ_APP_ROOT'] ?? dirname(__DIR__));
+define('PRIKAZ_CONFIG_PATH',  (string) ($GLOBALS['PRIKAZ_CONFIG_PATH'] ?? ''));
 define('PRIKAZ_APP_NAME',     $__cfg['app_name']);
 define('PRIKAZ_DB_PATH',      $__cfg['db_path']);
 define('PRIKAZ_STORAGE',      $__cfg['storage_path']);
 define('PRIKAZ_PASSWORD_MIN', (int) $__cfg['password_min']);
 define('PRIKAZ_CSRF_KEY',     $__cfg['csrf_key']);
+$__session_name = (string) ($__cfg['session_name'] ?? 'prikaz_session');
 
 unset($__cfg);
 
-// Проверка, что БД существует — иначе понятная ошибка вместо 500
 if (!is_file(PRIKAZ_DB_PATH)) {
     http_response_code(500);
     error_log('PRIKAZ: БД не найдена: ' . PRIKAZ_DB_PATH);
@@ -24,7 +25,7 @@ if (!is_file(PRIKAZ_DB_PATH)) {
 }
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_name($__cfg_session_name ?? 'prikaz_session');
+    session_name($__session_name);
     session_set_cookie_params([
         'lifetime' => 86400 * 7,
         'path'     => '/',
@@ -34,12 +35,12 @@ if (session_status() === PHP_SESSION_NONE) {
     ]);
     session_start();
 }
+unset($__session_name);
 
 function db(): PDO
 {
     static $pdo = null;
     if ($pdo instanceof PDO) return $pdo;
-
     $pdo = new PDO('sqlite:' . PRIKAZ_DB_PATH);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
@@ -81,17 +82,58 @@ function get_user_roles(int $userId): array
     return array_column($stmt->fetchAll(), 'code');
 }
 
+/**
+ * Аутентификация.
+ * Пароль администратора (login = admin_login из config.php) — по config.php.
+ * Все остальные — по users.password_hash.
+ */
 function auth_attempt(string $login, string $password): ?array
 {
-    $pdo = db();
-    $stmt = $pdo->prepare('SELECT * FROM users WHERE login = :l AND is_active = 1 LIMIT 1');
-    $stmt->execute([':l' => trim($login)]);
-    $user = $stmt->fetch();
-    if (!$user || !password_verify($password, $user['password_hash'])) return null;
+    $pdo   = db();
+    $login = trim($login);
 
-    if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
-        $pdo->prepare('UPDATE users SET password_hash = :h WHERE id = :id')
-            ->execute([':h' => password_hash($password, PASSWORD_DEFAULT), ':id' => (int) $user['id']]);
+    $logPath = dirname(PRIKAZ_DB_PATH) . '/diag.log';
+    $log = function (string $msg) use ($logPath, $login): void {
+        @file_put_contents(
+            $logPath,
+            '[' . date('Y-m-d H:i:s') . '] login=' . $login . ' ' . $msg . PHP_EOL,
+            FILE_APPEND
+        );
+    };
+
+    $stmt = $pdo->prepare('SELECT * FROM users WHERE login = :l AND is_active = 1 LIMIT 1');
+    $stmt->execute([':l' => $login]);
+    $user = $stmt->fetch();
+    if (!$user) {
+        $log('user not found or inactive → return null');
+        return null;
+    }
+
+    $cfg       = prikaz_config();
+    $cfgAdmin  = (string) ($cfg['admin_login'] ?? '');
+    $cfgPassLn = strlen((string) ($cfg['admin_password'] ?? ''));
+    $isAdmin   = prikaz_is_admin_login($login);
+
+    $log('cfg.admin_login="' . $cfgAdmin . '" cfg.pass_len=' . $cfgPassLn
+        . ' cfg.keys=' . implode(',', array_keys($cfg))
+        . ' is_admin=' . ($isAdmin ? '1' : '0'));
+
+    if ($isAdmin) {
+        if (!prikaz_check_admin_password($password)) {
+            $log('admin password mismatch, input_len=' . strlen($password));
+            return null;
+        }
+        $log('admin password OK');
+    } else {
+        if (!password_verify($password, (string) $user['password_hash'])) {
+            $log('password_verify failed (non-admin)');
+            return null;
+        }
+        $log('password_verify OK (non-admin)');
+        if (password_needs_rehash((string) $user['password_hash'], PASSWORD_DEFAULT)) {
+            $pdo->prepare('UPDATE users SET password_hash = :h WHERE id = :id')
+                ->execute([':h' => password_hash($password, PASSWORD_DEFAULT), ':id' => (int) $user['id']]);
+        }
     }
 
     session_regenerate_id(true);
@@ -103,6 +145,7 @@ function auth_attempt(string $login, string $password): ?array
     $pdo->prepare('UPDATE users SET last_login_at = :t WHERE id = :id')
         ->execute([':t' => date('Y-m-d H:i:s'), ':id' => (int) $user['id']]);
     audit_log((int) $user['id'], 'login', 'user', (int) $user['id']);
+    $log('auth OK');
     return $user;
 }
 

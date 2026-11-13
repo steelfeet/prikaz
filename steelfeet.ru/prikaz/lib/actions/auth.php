@@ -7,6 +7,13 @@ if ($action === 'logout') {
 }
 
 if ($action === 'change_own_password') {
+    $currentLogin = (string) ($currentUser['login'] ?? '');
+
+    if (prikaz_is_admin_login($currentLogin)) {
+        flash_set('danger', 'Пароль администратора задаётся в config.php. Через профиль его сменить нельзя.');
+        redirect('index.php?page=profile');
+    }
+
     $current = (string) ($_POST['current_password'] ?? '');
     $new     = (string) ($_POST['new_password'] ?? '');
     $repeat  = (string) ($_POST['repeat_password'] ?? '');
@@ -34,7 +41,6 @@ if ($action === 'change_own_password') {
     }
 
     $changePassword = ($new !== '');
-
     if ($changePassword) {
         if (strlen($new) < PRIKAZ_PASSWORD_MIN) {
             flash_set('danger', 'Пароль не короче ' . PRIKAZ_PASSWORD_MIN . ' символов.');
