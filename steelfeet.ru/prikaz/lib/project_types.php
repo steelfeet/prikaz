@@ -96,6 +96,60 @@ function project_type_checks_recent(int $typeId, int $limit = 5, ?PDO $pdo = nul
     return $stmt->fetchAll();
 }
 
+/**
+ * Палитра для фаз проекта. Используется в UI (свотчи, значение по умолчанию
+ * для «следующего по очереди» цвета) и в форме редактирования фазы.
+ *
+ * Порядок важен: от него зависит «цвет по очереди» при добавлении новой фазы.
+ *
+ * @return list<string> hex-цвета
+ */
+function project_type_phase_palette(): array
+{
+    return [
+        '#8b6914', // золото-оливковый (исторический по умолчанию)
+        '#2563eb', // синий
+        '#16a34a', // зелёный
+        '#dc2626', // красный
+        '#7c3aed', // фиолетовый
+        '#ea580c', // оранжевый
+        '#0d9488', // бирюзовый
+        '#be185d', // розовый
+        '#475569', // графит
+        '#92400e', // тёмно-янтарный
+    ];
+}
+
+/**
+ * Следующий цвет фазы «по очереди».
+ *
+ * Берём палитру и стартуем с позиции count($existingPhases) — то есть каждая
+ * новая фаза получает следующий цвет, даже если предыдущие совпадали.
+ * Если стартовый цвет уже занят другой фазой этого типа — идём вперёд
+ * по палитре до первого свободного. Если свободных нет (все 10 заняты) —
+ * возвращаем цвет на стартовой позиции (циклический повтор).
+ *
+ * @param list<array{color?:string}> $existingPhases уже существующие фазы типа
+ */
+function project_type_next_phase_color(array $existingPhases): string
+{
+    $palette = project_type_phase_palette();
+    $used = [];
+    foreach ($existingPhases as $ph) {
+        $c = strtolower(trim((string) ($ph['color'] ?? '')));
+        if ($c !== '') $used[$c] = true;
+    }
+    $n     = count($palette);
+    $start = count($existingPhases) % $n;
+    for ($i = 0; $i < $n; $i++) {
+        $candidate = $palette[($start + $i) % $n];
+        if (!isset($used[strtolower($candidate)])) {
+            return $candidate;
+        }
+    }
+    return $palette[$start];
+}
+
 function project_type_validate_code(string $code): ?string
 {
     if (!preg_match('/^[a-z][a-z0-9_-]{1,31}$/', $code)) {

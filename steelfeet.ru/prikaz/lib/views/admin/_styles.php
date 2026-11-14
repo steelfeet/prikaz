@@ -1026,4 +1026,55 @@ declare(strict_types=1);
     .pzk-ptype__grid { grid-template-columns: 1fr; }
     .pzk-ptype__grid > div:first-child { border-right: none; border-bottom: 1px solid #e8dcc0; }
 }
+
+/* ===== Цвет фаз проекта ===== */
+.pzk-color-picker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.pzk-color-picker__native {
+    width: 34px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid #d4c8a8;
+    border-radius: 3px;
+    background: #fff;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.pzk-color-picker__native::-webkit-color-swatch-wrapper { padding: 2px; }
+.pzk-color-picker__native::-webkit-color-swatch { border: none; border-radius: 2px; }
+.pzk-color-picker__native::-moz-color-swatch { border: none; border-radius: 2px; }
+.pzk-color-picker__text {
+    font-family: 'Inter', ui-monospace, monospace;
+    letter-spacing: 0.02em;
+    text-transform: lowercase;
+    flex: 1;
+    min-width: 90px;
+}
+.pzk-color-picker__swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+.pzk-color-picker__swatch {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+    transition: transform 0.1s, border-color 0.15s, box-shadow 0.15s;
+}
+.pzk-color-picker__swatch:hover {
+    transform: scale(1.12);
+    border-color: #1a1a1a;
+}
+.pzk-color-picker__swatch.is-active {
+    border-color: #1a1a1a;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2), 0 0 0 2px #fff;
+}
 </style>

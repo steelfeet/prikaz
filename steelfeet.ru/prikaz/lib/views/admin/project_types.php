@@ -13,6 +13,40 @@ declare(strict_types=1);
 $types       = $adminProjectTypes        ?? [];
 $typesPhases = $adminProjectTypesPhases  ?? [];
 $typesChecks = $adminProjectTypesChecks  ?? [];
+
+/**
+ * Рендер поля «Цвет» с нативным пикером, hex-инпутом и свотчами.
+ * Скрипт внизу страницы связывает их через data-color-picker.
+ */
+$renderPhaseColor = static function (string $name, string $value): string {
+    $value  = strtolower($value);
+    $palette = project_type_phase_palette();
+    ob_start(); ?>
+    <div class="pzk-color-picker" data-color-picker>
+        <input type="color"
+               value="<?= e($value) ?>"
+               class="pzk-color-picker__native"
+               aria-label="Выбрать цвет">
+        <input type="text" name="<?= e($name) ?>"
+               value="<?= e($value) ?>"
+               pattern="#[0-9a-fA-F]{6}"
+               maxlength="7"
+               autocomplete="off"
+               spellcheck="false"
+               class="pzk-field__input pzk-field__input--sm pzk-color-picker__text">
+    </div>
+    <div class="pzk-color-picker__swatches">
+        <?php foreach ($palette as $c): ?>
+            <button type="button"
+                    class="pzk-color-picker__swatch<?= strtolower($c) === $value ? ' is-active' : '' ?>"
+                    data-color="<?= e($c) ?>"
+                    style="background:<?= e($c) ?>;"
+                    title="<?= e($c) ?>"
+                    aria-label="Выбрать <?= e($c) ?>"></button>
+        <?php endforeach; ?>
+    </div>
+    <?php return (string) ob_get_clean();
+};
 ?>
 <section class="panel">
     <div class="panel__head">
@@ -39,6 +73,7 @@ $typesChecks = $adminProjectTypesChecks  ?? [];
                 $checks = $typesChecks[$tid]  ?? [];
                 $dir    = project_type_dir((string) $t['code']);
                 $exists = is_dir($dir);
+                $nextPhaseColor = project_type_next_phase_color($phases);
             ?>
             <div class="pzk-ptype" id="type-<?= $tid ?>">
                 <div class="pzk-ptype__head">
@@ -175,11 +210,8 @@ $typesChecks = $adminProjectTypesChecks  ?? [];
                                                class="pzk-field__input pzk-field__input--sm">
                                     </label>
                                     <label class="pzk-field">
-                                        <span class="pzk-field__label">Цвет (hex)</span>
-                                        <input type="text" name="color" value="#8b6914"
-                                               pattern="#[0-9a-fA-F]{6}"
-                                               autocomplete="off"
-                                               class="pzk-field__input pzk-field__input--sm">
+                                        <span class="pzk-field__label">Цвет</span>
+                                        <?= $renderPhaseColor('color', $nextPhaseColor) ?>
                                     </label>
                                     <label class="pzk-field">
                                         <span class="pzk-field__label">Описание (опц.)</span>
@@ -238,12 +270,8 @@ $typesChecks = $adminProjectTypesChecks  ?? [];
                                                                    class="pzk-field__input pzk-field__input--sm">
                                                         </label>
                                                         <label class="pzk-field">
-                                                            <span class="pzk-field__label">Цвет (hex)</span>
-                                                            <input type="text" name="color"
-                                                                   value="<?= e((string) $ph['color']) ?>"
-                                                                   pattern="#[0-9a-fA-F]{6}"
-                                                                   autocomplete="off"
-                                                                   class="pzk-field__input pzk-field__input--sm">
+                                                            <span class="pzk-field__label">Цвет</span>
+                                                            <?= $renderPhaseColor('color', (string) $ph['color']) ?>
                                                         </label>
                                                         <label class="pzk-field">
                                                             <span class="pzk-field__label">Описание (опц.)</span>
@@ -401,3 +429,47 @@ $typesChecks = $adminProjectTypesChecks  ?? [];
         </form>
     </details>
 </section>
+
+<script>
+(function () {
+    'use strict';
+    var wrappers = document.querySelectorAll('[data-color-picker]');
+    if (!wrappers.length) return;
+
+    wrappers.forEach(function (wrap) {
+        var native = wrap.querySelector('.pzk-color-picker__native');
+        var text   = wrap.querySelector('.pzk-color-picker__text');
+        if (!native || !text) return;
+
+        var field   = wrap.closest('.pzk-field') || wrap.parentElement;
+        var swatches = field ? field.querySelectorAll('.pzk-color-picker__swatch') : [];
+
+        function isHex(v) { return /^#[0-9a-fA-F]{6}$/.test(v); }
+
+        function paint(v, fromText) {
+            if (!isHex(v)) return;
+            var lower = v.toLowerCase();
+            if (native.value.toLowerCase() !== lower) native.value = lower;
+            if (!fromText && text.value.toLowerCase() !== lower) text.value = lower;
+            swatches.forEach(function (sw) {
+                sw.classList.toggle(
+                    'is-active',
+                    (sw.getAttribute('data-color') || '').toLowerCase() === lower
+                );
+            });
+        }
+
+        native.addEventListener('input', function () { paint(native.value, false); });
+        text.addEventListener('input', function () { paint(text.value, true); });
+
+        swatches.forEach(function (sw) {
+            sw.addEventListener('click', function () {
+                paint(sw.getAttribute('data-color') || '', false);
+            });
+        });
+
+        // Начальная синхронизация подсветки
+        paint(text.value, true);
+    });
+})();
+</script>

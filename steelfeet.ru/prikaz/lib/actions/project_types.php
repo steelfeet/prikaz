@@ -14,6 +14,10 @@ if ($action === 'admin_project_type_save') {
     $gogsOwner   = trim((string) ($_POST['gogs_owner'] ?? ''));
     $gogsPrefix  = trim((string) ($_POST['gogs_repo_prefix'] ?? ''));
 
+    if (!preg_match('/^#[0-9a-fA-F]{6}$/', $color)) {
+        $color = '#8b6914';
+    }
+
     $backUrl = 'index.php?page=admin&section=project_types';
 
     if ($name === '') {
@@ -114,6 +118,10 @@ if ($action === 'admin_project_type_phase_save') {
     $name        = trim((string) ($_POST['name'] ?? ''));
     $color       = trim((string) ($_POST['color'] ?? '#8b6914'));
     $description = trim((string) ($_POST['description'] ?? ''));
+
+    if (!preg_match('/^#[0-9a-fA-F]{6}$/', $color)) {
+        $color = '#8b6914';
+    }
 
     $backUrl = 'index.php?page=admin&section=project_types';
     if ($typeId > 0) $backUrl .= '#type-' . $typeId;
