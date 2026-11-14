@@ -5,6 +5,7 @@ $section = $_GET['section'] ?? 'academic_years';
 $allowedSections = [
     'academic_years', 'groups', 'subjects', 'schedule',
     'users', 'students', 'parents', 'lessons', 'projects', 'audit',
+    'project_types',
 ];
 if (!in_array($section, $allowedSections, true)) {
     $section = 'academic_years';

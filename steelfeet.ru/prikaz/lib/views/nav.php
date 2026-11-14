@@ -122,6 +122,9 @@ $isAcademicActive = in_array($section, $academicSections, true);
         </div>
     </div>
 
+    <a class="<?= $section === 'project_types' ? 'active' : '' ?>"
+       href="?page=admin&section=project_types">🎓 Типы проектов</a>
+
     <a class="<?= $section === 'schedule' ? 'active' : '' ?>" href="?page=admin&section=schedule">📆 Расписание</a>
     <a class="<?= $section === 'users'    ? 'active' : '' ?>" href="?page=admin&section=users">👥 Пользователи</a>
     <a class="<?= $section === 'students' ? 'active' : '' ?>" href="?page=admin&section=students">🎒 Студенты</a>

@@ -1,0 +1,11 @@
+{
+  "_comment": "Параметры CI/CD-проверки. Пока используется только как справка, см. TODO в check.php.",
+  "requires_pull_request": true,
+  "changed_files_min": 1,
+  "changed_files_max": 100,
+  "allowed_extensions": [".md", ".py", ".js", ".html", ".css", ".json", ".yml", ".yaml", ".txt", ".sh"],
+  "spec_paths": ["spec.md", "SPEC.md", "docs/spec.md", "docs/SPEC.md"],
+  "spec_min_words": 100,
+  "spec_required_sections": ["Цель", "Задачи", "Результат"],
+  "unique_spec": true
+}

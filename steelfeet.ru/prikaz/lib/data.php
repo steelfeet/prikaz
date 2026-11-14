@@ -167,6 +167,9 @@ try {
 
 // ===== Данные админки =====
 $adminUsers = $adminStudents = $adminParents = $adminLessons = $adminProjects = $adminParentLinks = $adminAudit = [];
+$adminProjectTypes       = [];
+$adminProjectTypesPhases = [];
+$adminProjectTypesChecks = [];
 $adminAcademicYears = [];
 $adminCurrentYear = null;
 $adminGroups = [];
@@ -206,6 +209,45 @@ if ($viewRole === 'admin') {
     $adminParents  = $pdo->query('SELECT * FROM parents ORDER BY full_name')->fetchAll();
     $adminLessons  = $pdo->query('SELECT * FROM lessons ORDER BY ord')->fetchAll();
     $adminProjects = $mockProjects;
+
+    // ===== Типы проектов (новая модель) =====
+    try {
+        $adminProjectTypes = $pdo->query(
+            'SELECT * FROM project_types ORDER BY code'
+        )->fetchAll();
+
+        if ($adminProjectTypes !== []) {
+            $typeIds = array_map(fn($t) => (int) $t['id'], $adminProjectTypes);
+
+            $stmt = $pdo->query(
+                'SELECT id, project_type_id, ord, name, color, description
+                 FROM project_type_phases ORDER BY project_type_id, ord, id'
+            );
+            foreach ($stmt->fetchAll() as $ph) {
+                $adminProjectTypesPhases[(int) $ph['project_type_id']][] = $ph;
+            }
+
+            $placeholders = implode(',', array_fill(0, count($typeIds), '?'));
+            $stmt = $pdo->prepare(
+                "SELECT c.*, u.login AS checked_login
+                 FROM project_type_checks c
+                 LEFT JOIN users u ON u.id = c.checked_by
+                 WHERE c.project_type_id IN ($placeholders)
+                 ORDER BY c.id DESC"
+            );
+            $stmt->execute($typeIds);
+            foreach ($stmt->fetchAll() as $c) {
+                $tid = (int) $c['project_type_id'];
+                if (!isset($adminProjectTypesChecks[$tid])) $adminProjectTypesChecks[$tid] = [];
+                if (count($adminProjectTypesChecks[$tid]) < 5) {
+                    $adminProjectTypesChecks[$tid][] = $c;
+                }
+            }
+        }
+    } catch (Throwable $e) {
+        // таблиц ещё нет — секция покажет пустоту
+    }
+
     $adminParentLinks = $pdo->query('SELECT * FROM parent_student')->fetchAll();
     $adminAudit = $pdo->query(
         'SELECT a.*, u.login

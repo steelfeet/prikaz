@@ -693,6 +693,152 @@ CREATE INDEX IF NOT EXISTS idx_journal_lesson_notes_subject ON journal_lesson_no
 SQL);
 init_out('✓ journal_marks, journal_lesson_notes на месте', $isCli);
 
+// =============================================================================
+// Типы проектов + фазы типа + проверки.
+//
+// Старый project_phases (глобальный справочник 4 фаз) остаётся как fallback
+// для уже существующих проектов, но новые типы проектов используют свои фазы
+// в project_type_phases. projects.project_type_id — nullable; null означает
+// «старый проект, фазы из project_phases».
+//
+// project_history: phase_id (старое) → NULL, type_phase_id (новое) → для
+// типовых фаз. Пересоздаём таблицу, т.к. phase_id был NOT NULL.
+// =============================================================================
+$pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS project_types (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    code        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    name        TEXT NOT NULL,
+    description TEXT,
+    color       TEXT NOT NULL DEFAULT '#8b6914',
+    icon        TEXT NOT NULL DEFAULT '📌',
+    gogs_owner  TEXT,
+    gogs_repo_prefix TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS project_type_phases (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_type_id INTEGER NOT NULL REFERENCES project_types(id) ON DELETE CASCADE,
+    ord             INTEGER NOT NULL,
+    name            TEXT NOT NULL,
+    color           TEXT NOT NULL DEFAULT '#8b6914',
+    description     TEXT,
+    UNIQUE (project_type_id, ord)
+);
+CREATE INDEX IF NOT EXISTS idx_project_type_phases_type ON project_type_phases(project_type_id);
+
+CREATE TABLE IF NOT EXISTS project_type_checks (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_type_id INTEGER NOT NULL REFERENCES project_types(id) ON DELETE CASCADE,
+    checked_by      INTEGER REFERENCES users(id),
+    checked_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    ok              INTEGER NOT NULL DEFAULT 0,
+    errors          TEXT,
+    warnings        TEXT,
+    details         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_project_type_checks_type ON project_type_checks(project_type_id, id);
+SQL);
+
+// projects.project_type_id — добавляем, если колонки нет.
+$projectCols = [];
+foreach ($pdo->query('PRAGMA table_info(projects)')->fetchAll() as $col) {
+    $projectCols[$col['name']] = true;
+}
+if (!isset($projectCols['project_type_id'])) {
+    $pdo->exec('ALTER TABLE projects ADD COLUMN project_type_id INTEGER REFERENCES project_types(id)');
+    init_out('✓ projects: добавлена project_type_id', $isCli);
+}
+
+// project_history: пересоздаём, если phase_id NOT NULL. Старые записи копируем.
+$histCols = [];
+foreach ($pdo->query('PRAGMA table_info(project_history)')->fetchAll() as $col) {
+    $histCols[$col['name']] = $col;
+}
+$histNeedRecreate = isset($histCols['phase_id'])
+    && (int) ($histCols['phase_id']['notnull'] ?? 0) === 1;
+
+if ($histNeedRecreate) {
+    $oldCount = 0;
+    try { $oldCount = (int) $pdo->query('SELECT COUNT(*) FROM project_history')->fetchColumn(); } catch (Throwable $e) {}
+
+    $pdo->exec('PRAGMA foreign_keys = OFF');
+    try {
+        $pdo->exec('ALTER TABLE project_history RENAME TO project_history_old');
+        $pdo->exec(<<<'SQL'
+CREATE TABLE project_history (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id    INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    phase_id      INTEGER REFERENCES project_phases(id),
+    type_phase_id INTEGER REFERENCES project_type_phases(id),
+    note          TEXT,
+    moved_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    moved_by      INTEGER REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_project_history_project ON project_history(project_id, id);
+SQL);
+        $pdo->exec('INSERT INTO project_history (id, project_id, phase_id, note, moved_at, moved_by)
+                    SELECT id, project_id, phase_id, note, moved_at, moved_by FROM project_history_old');
+        $pdo->exec('DROP TABLE project_history_old');
+    } catch (Throwable $e) {
+        $pdo->exec('PRAGMA foreign_keys = ON');
+        init_fail('Не удалось пересоздать project_history: ' . $e->getMessage(), $isCli);
+    }
+    $pdo->exec('PRAGMA foreign_keys = ON');
+    init_out('✓ project_history пересоздан (phase_id → NULL, добавлен type_phase_id); записей сохранено: ' . $oldCount, $isCli);
+} else {
+    init_out('→ project_history на месте', $isCli);
+}
+
+// Seed типов проектов и их фаз (если ещё пусто).
+$ptCount = (int) $pdo->query('SELECT COUNT(*) FROM project_types')->fetchColumn();
+if ($ptCount === 0) {
+    $seedTypes = [
+        ['original',    'Оригинал',     'Собственный проект с нуля',                 '#16a34a', '💻'],
+        ['fork',        'Форк',         'Развитие существующего проекта',            '#7c3aed', '🔀'],
+        ['research',    'Исследование', 'Исследование с результатами и выводами',    '#2563eb', '🔬'],
+        ['interactive', 'Интерактив',   'Игра, визуализация, интерактив',            '#0d9488', '🎮'],
+        ['report',      'Доклад',       'Текстовый доклад по теме',                  '#8b6914', '📄'],
+    ];
+    $insType = $pdo->prepare(
+        'INSERT INTO project_types (code, name, description, color, icon)
+         VALUES (:c, :n, :d, :col, :i)'
+    );
+    $insPhase = $pdo->prepare(
+        'INSERT INTO project_type_phases (project_type_id, ord, name, color)
+         VALUES (:t, :o, :n, :col)'
+    );
+    $basePhases = [
+        [1, 'Выбор темы',             '#8b6914'],
+        [2, 'Работа над проектом',    '#2563eb'],
+        [3, 'Предварительная защита', '#d97706'],
+        [4, 'Защита проекта',         '#16a34a'],
+    ];
+    foreach ($seedTypes as [$code, $name, $desc, $color, $icon]) {
+        $insType->execute([':c' => $code, ':n' => $name, ':d' => $desc, ':col' => $color, ':i' => $icon]);
+        $tid = (int) $pdo->lastInsertId();
+        foreach ($basePhases as [$ord, $pname, $pcolor]) {
+            $insPhase->execute([':t' => $tid, ':o' => $ord, ':n' => $pname, ':col' => $pcolor]);
+        }
+    }
+    init_out('✓ Типы проектов (сид): ' . count($seedTypes), $isCli);
+} else {
+    init_out('→ Типы проектов: ' . $ptCount . ' (сид пропущен)', $isCli);
+}
+
+// Привязка старых проектов к типу по коду (если ещё не привязаны).
+$pdo->exec(
+    'UPDATE projects
+     SET project_type_id = (SELECT id FROM project_types WHERE project_types.code = projects.type)
+     WHERE project_type_id IS NULL
+       AND EXISTS (SELECT 1 FROM project_types WHERE project_types.code = projects.type)'
+);
+
+// В $tables (сводка) добавить 'project_types', 'project_type_phases', 'project_type_checks'.
+
+
 
 
 // =============================================================================
@@ -927,7 +1073,9 @@ $tables = [
     'project_history', 'parent_visits', 'audit_log', 'help_articles',
     'help_feedback', 'academic_years', 'groups', 'semesters', 'subjects',
     'curriculum', 'schedule_entries', 'holidays', 'ktp_entries',
-    'journal_marks', 'journal_lesson_notes',
+    'journal_marks', 'journal_lesson_notes', 
+    'project_types', 'project_type_phases', 'project_type_checks',
+
 ]; [];
 foreach ($tables as $t) {
     try {

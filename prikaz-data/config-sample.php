@@ -25,4 +25,10 @@ return [
     'admin_login'      => 'admin',
     'admin_password'   => 'Admin',
     'admin_fullname'   => 'Администратор',
+
+
+    'gogs_base_url' => 'https://gogs.example',   // URL вашего Gogs, БЕЗ слэша на конце
+    'gogs_token'    => '',                       // personal access token (Settings → Applications)
+    'gogs_owner'    => '',                       // владелец репозиториев по умолчанию
+
 ];

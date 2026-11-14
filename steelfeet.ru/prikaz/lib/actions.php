@@ -14,19 +14,21 @@ $pdo = db();
 
 // Точные action'ы
 $exact = [
-    'logout'               => 'auth.php',
-    'change_own_password'  => 'auth.php',
+    'logout'                  => 'auth.php',
+    'change_own_password'     => 'auth.php',
 
-    'grade_set'            => 'journal.php',
-    'journal_mark_set'     => 'journal.php',
+    'grade_set'               => 'journal.php',
+    'journal_mark_set'        => 'journal.php',
     'journal_lesson_note_set' => 'journal.php',
 
-    'project_move_phase'   => 'projects.php',
-    'student_profile_save' => 'students.php',
-    'help_feedback'        => 'misc.php',
+    'project_move_phase'      => 'projects.php',
+    'student_profile_save'    => 'students.php',
+    'help_feedback'           => 'misc.php',
 ];
 
-// Префиксы — обрабатывают несколько action'ов одного домена
+// Префиксы — обрабатывают несколько action'ов одного домена.
+// Порядок важен: admin_project_type_ должен быть до admin_project_,
+// иначе str_starts_with поймает admin_project_ первым.
 $prefixes = [
     'admin_academic_year_' => 'academic.php',
     'admin_group_'         => 'academic.php',
@@ -38,13 +40,14 @@ $prefixes = [
     'admin_ktp_'           => 'subjects.php',
 
     'admin_schedule_'      => 'schedule.php',
-
     'admin_user_'          => 'users.php',
 
     'admin_student_'       => 'students.php',
     'admin_parent_'        => 'students.php',
 
     'admin_lesson_'        => 'lessons.php',
+
+    'admin_project_type_'  => 'project_types.php',
     'admin_project_'       => 'projects.php',
 
     'journal_'             => 'journal.php',

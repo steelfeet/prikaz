@@ -210,7 +210,8 @@ function audit_log(int $userId, string $action, ?string $targetType = null, ?int
 require_once __DIR__ . '/utils.php';
 require_once __DIR__ . '/journal.php';
 require_once __DIR__ . '/projects.php';
+require_once __DIR__ . '/project_types.php';
 require_once __DIR__ . '/schedule.php';
 require_once __DIR__ . '/ktp.php';
 require_once __DIR__ . '/curriculum.php';
-require PRIKAZ_ROOT . '/lib/students.php';
+require_once __DIR__ . '/students.php';
