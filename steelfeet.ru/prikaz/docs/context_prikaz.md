@@ -1,5 +1,89 @@
+# Контекст проекта «Приказ»
+
+## 1. Что это
+
+Школьная LMS на PHP 8.2 + SQLite. Один каталог `prikaz/`, БД вне webroot
+в `prikaz-data/`. Никаких фреймворков: чистый PHP + PDO + небольшой слой
+хелперов. Сессии, CSRF, аудит — вручную. Раздаётся как есть, разворачивается
+на shared-хостинге копированием файлов.
+
+---
+
+## 2. Структура
+
+```
+prikaz/
+  index.php              — роутер (?page=…), ob_start(), bootstrap, views
+  config.php             — app_name, db_path, storage_path, admin_login, admin_password,
+                           session_name, csrf_key, password_min,
+                           gogs_base_url, gogs_token, gogs_owner
+  bootstrap.php          — конфиг, сессия, db(), csrf, auth, audit, require_once lib/*
+  actions.php            — POST-диспетчер ($action → lib/actions/<domain>.php)
+  data.php               — загрузка данных для рендера
+  nav.php                — меню (admin / teacher / parent / student)
+  profile.php            — личный кабинет (все роли)
+  student.php            — страница студента (проекты, журнал)
+  help_widget.php        — плавающая «?»
+  lib/
+    utils.php            — e(), redirect(), json_response(), flash_*, wants_json(),
+                           hash_password, prikaz_config, prikaz_is_admin_login,
+                           prikaz_check_admin_password, parse_topic_lines, topic_key
+    journal.php          — агрегаты журнала, сетка
+    schedule.php         — schedule_*
+    ktp.php              — ktp_lesson_blocks, ktp_holiday_losses, ktp_layout,
+                           ktp_tariff_from_layout, ktp_slots_from_layout, ktp_generate,
+                           ktp_add_more, ktp_delete, ktp_reindex, ktp_render_block,
+                           ktp_kind_label
+    curriculum.php       — curriculum_*
+    students.php         — students_*, parse_student_lines, student_*
+    projects.php         — project_phases_meta, project_types_meta, project_phases_for,
+                           project_current_phase_num, project_history_rows,
+                           project_students_rows, project_change_phase
+    project_types.php    — project_types_dir, project_types_templates_dir, project_type_dir,
+                           project_types_all, project_type_by_id, project_type_by_code,
+                           project_type_phases, project_type_checks_recent,
+                           project_type_validate_code, project_type_save, project_type_delete,
+                           project_type_render_files, project_type_check
+    actions/
+      auth.php           — logout, change_own_password
+      journal.php        — grade_set, journal_mark_set, journal_lesson_note_set
+      projects.php       — project_move_phase
+      project_types.php  — admin_project_type_* (save/delete/regen_folder/check)
+                           + admin_project_type_phase_* (save/delete)
+      academic.php       — admin_academic_year_*, admin_group_*, admin_semester_*,
+                           admin_holiday_*
+      subjects.php       — admin_subject_*, admin_curriculum_*, admin_ktp_*
+      schedule.php       — admin_schedule_*
+      users.php          — admin_user_*
+      students.php       — admin_student_*, admin_parent_*, student_profile_save
+      lessons.php        — admin_lesson_*
+      misc.php           — help_feedback
+  lib/views/
+    admin.php            — диспетчер секций (?page=admin&section=…)
+    admin/academic_years.php, groups.php, subjects.php, schedule.php,
+          users.php, students.php, parents.php, lessons.php,
+          projects.php, project_types.php, audit.php
+    admin/_topics_block.php, _ktp_block.php
+    admin/_styles.php, _scripts.php
+    login.php, journal.php, teacher.php, student.php, parent.php, profile.php, …
+  db/init.php            — инициализация/сброс БД (в браузере)
+  projects/              — CI/CD-проверки (v.0.1.9.25)
+    .htaccess            — закрывает прямой доступ
+    _templates/
+      check.php          — эталон-заглушка (большой комментарий сверху)
+      config.json        — параметры проверки (справка)
+      README.md          — инструкция: как отдать в ИИ, получить реальный check.php
+    <code>/
+      check.php          — рабочая копия; правится админом, при обновлении типа НЕ перезаписывается
+  assets/                — стили, скрипты
+  prikaz-data/           — SQLite + diag.log (вне webroot)
+```
+
 **Наследие CRM** (не нужно, удалить при рефакторинге):
-`lib/workflow.php`, `lib/documents.php`, `lib/views/manager.php`, `lib/views/university.php`, `lib/views/supervisor.php`, `lib/views/documents.php`, `lib/views/document_card.php`, `assets/documents.css`, `assets/workflow_docs.js`, `assets/supervisor.js`.
+`lib/workflow.php`, `lib/documents.php`, `lib/views/manager.php`,
+`lib/views/university.php`, `lib/views/supervisor.php`, `lib/views/documents.php`,
+`lib/views/document_card.php`, `assets/documents.css`, `assets/workflow_docs.js`,
+`assets/supervisor.js`.
 
 ---
 
@@ -7,7 +91,7 @@
 
 | Роль | Что делает |
 |---|---|
-| `admin` | Создаёт пользователей и студентов. Учебный процесс (годы, семестры, группы, предметы, темы, расписание, КТП, праздники), уроки, проекты, родители. Аудит. Пароль — из `config.php` |
+| `admin` | Создаёт пользователей и студентов. Учебный процесс (годы, семестры, группы, предметы, темы, расписание, КТП, праздники), уроки, **типы проектов и их фазы**, проекты, родители. Аудит. Пароль — из `config.php` |
 | `teacher` | Журнал (оценки, заметки), фазы проектов, сводка, активность родителей |
 | `student` | Свои оценки, заметки, проекты, фазы. Личный кабинет: email, VK, Telegram, пароль (не логин/ФИО) |
 | `parent` | Журнал и проекты своего ребёнка. Факт захода фиксируется |
@@ -22,37 +106,53 @@
 
 Меню: «Учебный год», «Группы», «Предметы и темы».
 
-**Учебный год** (`academic_years`): `name`, `start_date`, `end_date`, `is_current` (UNIQUE INDEX). При создании — семестры «1 семестр» и «2 семестр».
+**Учебный год** (`academic_years`): `name`, `start_date`, `end_date`, `is_current`
+(UNIQUE INDEX). При создании — семестры «1 семестр» и «2 семестр».
 
-**Семестры** (`semesters`): `academic_year_id`, `name`, `is_practice`, `ord`. Карточки в «Учебном году». Удаление каскадом.
+**Семестры** (`semesters`): `academic_year_id`, `name`, `is_practice`, `ord`.
+Карточки в «Учебном году». Удаление каскадом.
 
-**Праздники** (`holidays`): `semester_id`, `date`, `name`. UNIQUE `(semester_id, date)`. Валидация по диапазону года. **Влияют на КТП** (вычитаются из «Фактически часов»).
+**Праздники** (`holidays`): `semester_id`, `date`, `name`. UNIQUE `(semester_id, date)`.
+Валидация по диапазону года. **Влияют на КТП** (вычитаются из «Фактически часов»).
 
-**Группы** (`groups`): `academic_year_id`, `name`, `curator`, `notes`. UNIQUE `(academic_year_id, name)`. **Inline-редактирование** в отдельной строке под группой, кнопка «Редактировать» открывает `<details class="pzk-group-edit">`.
+**Группы** (`groups`): `academic_year_id`, `name`, `curator`, `notes`.
+UNIQUE `(academic_year_id, name)`. **Inline-редактирование** в отдельной строке
+под группой, кнопка «Редактировать» открывает `<details class="pzk-group-edit">`.
 
-**Предметы** (`subjects`): `semester_id`, `group_id`, `short_name`, `full_name`, `hours`. UNIQUE `(semester_id, group_id, short_name)`. **Inline-редактирование** под строкой (`<details class="pzk-subject-edit">`). Селекты год → группа → семестр с JS.
+**Предметы** (`subjects`): `semester_id`, `group_id`, `short_name`, `full_name`, `hours`.
+UNIQUE `(semester_id, group_id, short_name)`. **Inline-редактирование** под строкой
+(`<details class="pzk-subject-edit">`). Селекты год → группа → семестр с JS.
 
-**Темы** (`curriculum`): `subject_id`, `ord`, `topic`. UNIQUE `(subject_id, ord)`. **Inline**: `<details class="pzk-topic-edit">` в ячейке «Тема», `<textarea rows="3">` под текстом. «+ Добавить ниже» — маленькая ссылка под текстом, `curriculum_insert_below` (двухфазный сдвиг `ord`). Всё AJAX.
+**Темы** (`curriculum`): `subject_id`, `ord`, `topic`. UNIQUE `(subject_id, ord)`.
+**Inline**: `<details class="pzk-topic-edit">` в ячейке «Тема», `<textarea rows="3">`
+под текстом. «+ Добавить ниже» — маленькая ссылка под текстом,
+`curriculum_insert_below` (двухфазный сдвиг `ord`). Всё AJAX.
 
 ### КТП
 
 Одна тема = один блок.
 
 - **Групповой блок** — пара (1,2), (3,4)… 1 урок → «N», 2 → «N-M».
-- **Подгрупповой блок** — все sub1/sub2 дня = один блок. Слоты = `max(sub1, sub2)`, tariff = `sub1 + sub2`.
+- **Подгрупповой блок** — все sub1/sub2 дня = один блок.
+  Слоты = `max(sub1, sub2)`, tariff = `sub1 + sub2`.
 - Порядок в дне — по `min lesson_num`.
 - Праздники пропускаются.
 
-**Функции** (`lib/ktp.php`): `ktp_lesson_blocks`, `ktp_holiday_losses`, `ktp_layout`, `ktp_tariff_from_layout`, `ktp_slots_from_layout`, `ktp_generate`, `ktp_add_more`, `ktp_delete`, `ktp_reindex`, `ktp_render_block`, `ktp_kind_label`.
+**Функции** (`lib/ktp.php`): `ktp_lesson_blocks`, `ktp_holiday_losses`,
+`ktp_layout`, `ktp_tariff_from_layout`, `ktp_slots_from_layout`, `ktp_generate`,
+`ktp_add_more`, `ktp_delete`, `ktp_reindex`, `ktp_render_block`, `ktp_kind_label`.
 
-**Шапка:** «Часов по учебному плану / По тарификации / В КТП / Фактически часов». Плюс список праздников. Плюс фильтр «Все / Лекция / Практикум» левее «Перегенерировать».
+**Шапка:** «Часов по учебному плану / По тарификации / В КТП / Фактически часов».
+Плюс список праздников. Плюс фильтр «Все / Лекция / Практикум» левее «Перегенерировать».
 
 - **Совпадает (`✓`)** — `план == tariff`.
 - **Зелёная подсветка** — `В КТП == Фактически часов` (`.pzk-ktp__match-value`).
 
-**Столбец «№ по типу»** появляется при фильтре, содержит сквозную нумерацию видимых уроков этого типа (с учётом слотов).
+**Столбец «№ по типу»** появляется при фильтре, содержит сквозную нумерацию
+видимых уроков этого типа (с учётом слотов).
 
-**Sticky:** шапка (`top: 0`) и `thead th` (`top: var(--ktp-head-h)`), переменная от `ResizeObserver`. При ≤1200px — отключается, включается `overflow-x`.
+**Sticky:** шапка (`top: 0`) и `thead th` (`top: var(--ktp-head-h)`), переменная
+от `ResizeObserver`. При ≤1200px — отключается, включается `overflow-x`.
 
 **Даты через `rowspan`** при фильтре «Все».
 
@@ -62,59 +162,214 @@
 
 Раздел `admin/students.php`.
 
-**Поля в БД** (`students` + `users`): `last_name`, `first_name`, `middle_name`, `login` (= `students.alias` = `users.login`), `email` (`users.email`), `password` (`users.password_hash`), `vk_url`, `telegram`, `group_id`, `group_name` (для совместимости), `full_name` (для совместимости).
+**Поля в БД** (`students` + `users`): `last_name`, `first_name`, `middle_name`,
+`login` (= `students.alias` = `users.login`), `email` (`users.email`),
+`password` (`users.password_hash`), `vk_url`, `telegram`, `group_id`,
+`group_name` (для совместимости), `full_name` (для совместимости).
 
-**Фильтры:** учебный год (`student_year`, по умолчанию текущий), группа (`student_group`). SQL с `WHERE g.academic_year_id = :y AND s.group_id = :g`.
+**Фильтры:** учебный год (`student_year`, по умолчанию текущий), группа
+(`student_group`). SQL с `WHERE g.academic_year_id = :y AND s.group_id = :g`.
 
-**Добавление** — форма с полями: Фамилия, Имя, Отчество, Логин, Пароль, Email, VK, Telegram, год + группа. Год → группа с JS.
+**Добавление** — форма с полями: Фамилия, Имя, Отчество, Логин, Пароль, Email,
+VK, Telegram, год + группа. Год → группа с JS.
 
-**Inline-редактирование** под строкой: Фамилия, Имя, Отчество, Логин, Email, **Пароль (для восстановления доступа, пустой — не менять)**, VK, Telegram, Группа. **Учебного года нет**. Все группы всех годов в селекте.
+**Inline-редактирование** под строкой: Фамилия, Имя, Отчество, Логин, Email,
+**Пароль (для восстановления доступа, пустой — не менять)**, VK, Telegram, Группа.
+**Учебного года нет**. Все группы всех годов в селекте.
 
-**Удаление** — каскад через `users` (снесёт `students`, `grades`, `project_students`, `parent_student`).
+**Удаление** — каскад через `users` (снесёт `students`, `grades`,
+`project_students`, `parent_student`).
 
-**Массовое добавление** — `Фамилия Имя Отчество, логин` (по строке). Группа обязательна, из групп текущего года (селект `max-width:180px`). Пароль по умолчанию — `1111`, email — `<логин>@mail.ru`. Сервер: `groupId > 0` и группа из текущего года, иначе отказ.
+**Массовое добавление** — `Фамилия Имя Отчество, логин` (по строке).
+Группа обязательна, из групп текущего года (селект `max-width:180px`).
+Пароль по умолчанию — `1111`, email — `<логин>@mail.ru`. Сервер: `groupId > 0`
+и группа из текущего года, иначе отказ.
 
-**Функции** (`lib/students.php`): `students_create`, `students_update` (опц. пароль), `students_delete`, `students_bulk_create($parsed, $groupId)`, `parse_student_lines`, `student_split_full_name`, `student_join_full_name`, `student_validate_login`, `student_validate_email`, `students_group_options`, `student_profile_save`.
+**Функции** (`lib/students.php`): `students_create`, `students_update`
+(опц. пароль), `students_delete`, `students_bulk_create($parsed, $groupId)`,
+`parse_student_lines`, `student_split_full_name`, `student_join_full_name`,
+`student_validate_login`, `student_validate_email`, `students_group_options`,
+`student_profile_save`.
 
-**Обработчики** (`lib/actions/students.php`): `admin_student_create`, `admin_student_update`, `admin_student_delete`, `admin_student_bulk_create`, `student_profile_save`, `admin_parent_link`, `admin_parent_unlink`.
+**Обработчики** (`lib/actions/students.php`): `admin_student_create`,
+`admin_student_update`, `admin_student_delete`, `admin_student_bulk_create`,
+`student_profile_save`, `admin_parent_link`, `admin_parent_unlink`.
 
 ### Личный кабинет
 
 `profile.php` — работает для всех ролей.
 
-- **Студент:** «Личный кабинет», поля Email, VK, Telegram, Текущий пароль, Новый пароль, Повтор. Поля VK/Telegram — только для студентов. Три поля пароля — на второй строке сетки (два `.profile-form__grid` подряд).
+- **Студент:** «Личный кабинет», поля Email, VK, Telegram, Текущий пароль,
+  Новый пароль, Повтор. Поля VK/Telegram — только для студентов. Три поля
+  пароля — на второй строке сетки (два `.profile-form__grid` подряд).
 - **Админ:** «Профиль», только Email + пароль. `change_own_password` для админа — отказ.
-- **`student.php`** — шапка с аватаром, ФИО, группой, логином, email, VK, Telegram, числом проектов, кнопкой «⚙ Настройки профиля» → `?page=profile`. Вкладки «Проекты» / «Журнал». Профильной формы в `student.php` больше нет.
-- **`nav.php`** — для `student` сразу `return`, верхнего меню нет (разделы внутри вкладок).
+- **`student.php`** — шапка с аватаром, ФИО, группой, логином, email, VK,
+  Telegram, числом проектов, кнопкой «⚙ Настройки профиля» → `?page=profile`.
+  Вкладки «Проекты» / «Журнал». Профильной формы в `student.php` больше нет.
+- **`nav.php`** — для `student` сразу `return`, верхнего меню нет
+  (разделы внутри вкладок).
 
 ### Аутентификация
 
-- **Админ** — логин `admin_login` из `config.php`, пароль `admin_password`. Проверка в `prikaz_is_admin_login` + `prikaz_check_admin_password` (`lib/utils.php`). `prikaz_config()` читает `$GLOBALS['PRIKAZ_CONFIG']` (если есть `admin_login`) или файл напрямую по путям: `PRIKAZ_CONFIG_PATH` → рядом с БД → рядом с корнем → `/var/www/u3469397/data/www/prikaz-data/config.php` → env.
+- **Админ** — логин `admin_login` из `config.php`, пароль `admin_password`.
+  Проверка в `prikaz_is_admin_login` + `prikaz_check_admin_password`
+  (`lib/utils.php`). `prikaz_config()` читает `$GLOBALS['PRIKAZ_CONFIG']`
+  (если есть `admin_login`) или файл напрямую по путям: `PRIKAZ_CONFIG_PATH` →
+  рядом с БД → рядом с корнем → `/var/www/u3469397/data/www/prikaz-data/config.php` → env.
 - **Все остальные** — `password_verify` по `users.password_hash`, авто-рехэш.
 - **Сменить пароль админа** через веб нельзя — только `config.php`.
 - **Сброс пароля** для админа (`admin_user_reset_password`) — отказ.
 - **`admin_user_toggle`** для админа — отказ.
 - **`admin_user_create`** с логином `admin` — отказ.
 
-`auth_attempt` в `bootstrap.php` пишет лог в `prikaz-data/diag.log`: `login`, `is_admin`, `cfg.admin_login`, `cfg.pass_len`. Удалять `diag.log` после отладки.
+`auth_attempt` в `bootstrap.php` пишет лог в `prikaz-data/diag.log`:
+`login`, `is_admin`, `cfg.admin_login`, `cfg.pass_len`. Удалять `diag.log`
+после отладки.
 
 ### Журнал
-Сетка «студенты × занятия», модалка с оценкой и заметкой, тема и ДЗ по клику на дату.
+
+Сетка «студенты × занятия», модалка с оценкой и заметкой, тема и ДЗ
+по клику на дату. Обновление без перезагрузки. Студент видит только свой
+журнал с общими примечаниями и своими.
 
 ### Проекты
-Фазы (Выбор темы → Работа → Предзащита → Защита), типы, участники, история, repo_url.
+
+**Старая модель.** Глобальные фазы (`project_phases`), `projects.type` (строка,
+`original` / `fork` / …), `project_history.phase_id`. Используется только
+для проектов, у которых `projects.project_type_id IS NULL`.
+
+**Новая модель (v.0.1.9.25).** Тип проекта (`project_types`) и его фазы
+(`project_type_phases`). Проект привязан к типу через `projects.project_type_id`,
+история — `project_history.type_phase_id`. См. подраздел «Типы проектов».
+
+Участники — `project_students`. Смена фазы — `project_change_phase()`
+(пишет `type_phase_id` для проектов с типом, иначе `phase_id`).
+
+### Типы проектов (v.0.1.9.25)
+
+Раздел админки `?page=admin&section=project_types`. Пункт в `nav.php` —
+«🎓 Типы проектов» между «Учебный процесс» и «Расписание».
+
+**Таблицы:**
+
+- `project_types`: `id`, `code` (UNIQUE, `[a-z][a-z0-9_-]{1,31}`), `name`,
+  `description`, `color` (hex), `icon` (эмодзи), `gogs_owner`,
+  `gogs_repo_prefix`, `created_at`, `updated_at`.
+- `project_type_phases`: `id`, `project_type_id`, `ord`, `name`, `color`,
+  `description`. UNIQUE `(project_type_id, ord)`.
+- `project_type_checks`: `id`, `project_type_id`, `checked_by`, `ok`
+  (0/1), `errors` (json), `warnings` (json), `details` (json), `checked_at`.
+
+`projects` — добавлено `project_type_id` (nullable, FK → `project_types.id`).
+`project_history` — добавлено `type_phase_id` (nullable, FK → `project_type_phases.id`).
+
+**Папка `projects/`** (в корне Приказа, `PRIKAZ_ROOT/projects/`):
+
+- `.htaccess` — закрывает прямой доступ.
+- `_templates/check.php` — эталон-заглушка CI/CD. Большой комментарий сверху:
+  структура `$ctx`, формат возврата, примеры Gogs API, TODO 1–5
+  (PR, изменённые файлы, spec.md, уникальность, `$details`).
+- `_templates/config.json` — параметры проверки (`requires_pull_request`,
+  `changed_files_min`, `spec_paths`, `allowed_extensions`, …). Пока справка.
+- `_templates/README.md` — инструкция: открыть `check.php` в панели хостинга
+  или скачать, скопировать в чат ИИ, описать, что проверять, получить
+  новый `check.php`, положить обратно, нажать «Проверить».
+- `projects/<code>/check.php` — рабочая копия. **При редактировании типа
+  не перезаписывается**, чтобы админ мог дорабатывать вручную.
+  Принудительная перезапись — кнопкой «♻ Пересоздать папку».
+
+**Действия на карточке типа:**
+
+| Кнопка | Action | Что делает |
+|---|---|---|
+| Редактировать | `admin_project_type_save` (`id>0`) | обновляет запись; папку не трогает |
+| ➕ Добавить | `admin_project_type_save` (`id=0`) | создаёт тип + `projects/<code>/check.php` из `_templates/` |
+| ✅ Проверить | `admin_project_type_check` | `include projects/<code>/check.php` с `$ctx`, ждёт массив `['ok','errors','warnings','details']`, пишет в `project_type_checks`, flash |
+| ♻ Пересоздать папку | `admin_project_type_regen_folder` | принудительно копирует `_templates/check.php` → `projects/<code>/check.php` (ручные правки теряются) |
+| Удалить | `admin_project_type_delete` | отказ, если есть проекты этого типа; папку не трогает |
+
+**Фазы типа:**
+
+| Кнопка | Action |
+|---|---|
+| ➕ Добавить фазу | `admin_project_type_phase_save` (`id=0`) |
+| Редактировать | `admin_project_type_phase_save` (`id>0`) |
+| Удалить | `admin_project_type_phase_delete` |
+
+**`$ctx` для `check.php`:**
+
+```
+$ctx['type']     = project_types row + gogs_owner / gogs_repo_prefix
+$ctx['gogs']     = ['base_url' => config, 'token' => config,
+                    'owner'    => type.gogs_owner ?: config.gogs_owner]
+$ctx['projects'] = [{id,title,repo_url}, ...]  // неархивные проекта этого типа
+$ctx['dir']      = путь к projects/<code>/check.php
+```
+
+`check.php` вызывается через `include` в замыкании, `$ctx` — в области видимости.
+Должен **вернуть** массив. Иначе — `project_type_check()` сам подставит
+`['ok'=>false, 'errors'=>['check.php не вернул массив.'], …]`.
+
+**`config.php`** — новые ключи `gogs_base_url`, `gogs_token`, `gogs_owner`.
+Без них `check.php` не пройдёт базовые проверки (эталон явно это пишет
+в `errors`).
+
+**Функции** (`lib/project_types.php` в `bootstrap.php`):
+`project_types_dir`, `project_types_templates_dir`, `project_type_dir`,
+`project_types_all`, `project_type_by_id`, `project_type_by_code`,
+`project_type_phases`, `project_type_checks_recent`, `project_type_validate_code`,
+`project_type_save`, `project_type_delete`, `project_type_render_files`,
+`project_type_check`.
+
+**`lib/projects.php`** — обновлён:
+
+- `project_types_meta()` — из БД, fallback на статические 5
+  (`original` / `fork` / `research` / `interactive` / `report`).
+- `project_phases_meta()` — глобальные (старая модель).
+- `project_phases_for($projectId)` — фазы типа, если `project_type_id > 0`,
+  иначе глобальные.
+- `project_current_phase_num()`, `project_history_rows()` — учитывают
+  `COALESCE(pph.num, ptph.ord)`.
+- `project_change_phase()` — для проекта с типом пишет `type_phase_id`,
+  иначе `phase_id`.
+
+**`data.php`** — для админа дополнительно загружает:
+
+- `$adminProjectTypes` — все типы;
+- `$adminProjectTypesPhases` — `[type_id => list<phases>]`;
+- `$adminProjectTypesChecks` — `[type_id => последние 5 проверок]`
+  (запрос с `LEFT JOIN users` для `checked_login`).
+
+`_styles.php` — блок «Типы проектов»: `.pzk-ptype`, `.pzk-ptype__head`,
+`.pzk-ptype__grid`, `.pzk-table--ptype-phases`, `.pzk-table--ptype-checks`,
+`.pzk-ptype__folder--ok/bad`. На ≤1100px сетка колонок складывается в одну.
 
 ### Админка
-Пользователи, студенты, родители, уроки, проекты, аудит. Диспетчер `lib/views/admin.php`, секции `lib/views/admin/*.php`, партиалы `_topics_block.php` / `_ktp_block.php`. `_styles.php`, `_scripts.php` — общие.
+
+Пользователи, студенты, родители, уроки, **типы проектов**, проекты, аудит.
+Диспетчер `lib/views/admin.php`, секции `lib/views/admin/*.php`, партиалы
+`_topics_block.php` / `_ktp_block.php`. `_styles.php`, `_scripts.php` — общие.
+
+`$allowedSections` в `admin.php` включает `project_types`. `nav.php` —
+пункт «🎓 Типы проектов».
 
 ### Справка
+
 Плавающая «?», null-guard на `fab`/`panel`/`closeBtn`.
 
 ### Вход
+
 Славянский стиль, буквица, Ruslan Display.
 
 ### AJAX
-`_scripts.php`, `ajaxSubmit(form, block)` — fetch с `ajax=1`. Сервер: `wants_json()` → `json_response({ok, html})`. `redirect()` и `json_response()` вызывают `ob_end_clean`. `index.php` открывает `ob_start()` в начале.
+
+`_scripts.php`, `ajaxSubmit(form, block)` — fetch с `ajax=1`. Сервер:
+`wants_json()` → `json_response({ok, html})`. `redirect()` и `json_response()`
+вызывают `ob_end_clean`. `index.php` открывает `ob_start()` в начале.
+
+Типы проектов — пока без AJAX: действия — обычные POST-формы с `redirect()`.
+`project_type_save` / `_delete` / `_regen_folder` / `_check` и
+`project_type_phase_*` — всё через `flash_set()` + `redirect()`.
 
 ---
 
@@ -132,8 +387,11 @@
 | БД | Вне webroot |
 | Буферы | `ob_start` + `ob_end_clean` |
 | `diag.php` | Одноразовый, удалять |
+| `projects/` | Закрыт `.htaccess` от прямого доступа |
+| CI/CD `check.php` | Выполняется через `include`; админ пишет код сам; Gogs-токен — в `config.php` |
 
-**Не сделано:** восстановление пароля по email, rate limiting, 2FA, согласие на ПДн.
+**Не сделано:** восстановление пароля по email, rate limiting, 2FA,
+согласие на ПДн.
 
 ---
 
@@ -173,6 +431,16 @@
 32. **`diag.php`** — одноразовый, удалять. Показывает конфиг и БД.
 33. **`diag.log`** — пишется `auth_attempt` в `dirname(PRIKAZ_DB_PATH)`. Удалять после отладки.
 34. **`profile.php`** — работает без `data.php`: если `$studentProfile` не передан, подгружает из БД для роли `student` (в начале файла).
+35. **`data.php` для `$adminSubjects`** — фильтр по семестру должен идти **после** фильтра по году/группе, `$adminSemesters` собирается по `academic_year_id`.
+36. **`project_types_dir()`** — от `PRIKAZ_ROOT` (`projects/` в корне Приказа). Эталон — `projects/_templates/check.php`. При `project_type_save()` (`id=0`) вызывается `project_type_render_files($newId, $pdo, true)`. При `id>0` — файл **не трогается**. Принудительная перезапись — `admin_project_type_regen_folder`.
+37. **`actions.php`: `admin_project_type_` должен идти ДО `admin_project_`.** Иначе `str_starts_with` поймает `admin_project_` первым и уведёт в `lib/actions/projects.php`, а там `project_type_*` нет.
+38. **`project_type_check()`** делает `include` файла через замыкание — `$ctx` в области видимости. Файл должен **вернуть** массив. Если вернул не массив — подставляется `['ok'=>false, 'errors'=>['check.php не вернул массив.'], …]`. Пишет в `project_type_checks` (`json_encode` для `errors`/`warnings`/`details`, `JSON_UNESCAPED_UNICODE`).
+39. **`project_type_render_files($typeId, $pdo, $overwrite=false)`** — если `$overwrite=false` и файл уже есть, не перезаписывает. Используется в `project_type_check()` для «ленивого» создания `check.php`, если его нет.
+40. **`projects/` закрыт `.htaccess`.** Если добавили новый тип и папки нет — `project_type_render_files` создаст её `mkdir(0775, true)`. Если хостинг не даёт `mkdir` — проверка упадёт с понятной ошибкой.
+41. **`project_types_meta()`** — из БД, fallback на статические 5. Если таблицы ещё нет — молча отдаст статический список. `project_phases_meta()` — только старая модель (глобальные фазы).
+42. **`project_phases_for($projectId)`** — если `projects.project_type_id > 0`, берёт фазы типа (`project_type_phases.ord`). Иначе — глобальные (`project_phases.num`). `project_current_phase_num()` и `project_history_rows()` используют `COALESCE(pph.num, ptph.ord)`.
+43. **`project_change_phase()`** — для проекта с типом находит `project_type_phases.id` по `ord`, пишет `type_phase_id`. Иначе пишет `phase_id`. В `project_history` оба поля nullable.
+44. **Gogs в `config.php`:** `gogs_base_url`, `gogs_token`, `gogs_owner`. `project_type_check()` собирает `$ctx['gogs']`: `base_url` и `token` — из config, `owner` — из типа (`gogs_owner`) с fallback'ом на config. Без токена реальные запросы к Gogs будут 401 — эталон это явно возвращает в `errors`.
 
 ---
 
@@ -183,10 +451,15 @@
 - Стиль: славянский на входе, минимализм внутри. Serif в заголовках, sans в теле.
 - «Критерии оценивания», не «рубрика».
 - Тон прямой. К пользователю — мужской род, о себе — женский.
-- Перед выдачей файла целиком — проверить сущности (семестры, праздники, расписание, предметы, подгруппы, КТП, студенты) и ловушки.
-- Админка — `lib/views/admin/<section>.php`. Партиалы — `_<name>_block.php`. Общие — `_styles.php`, `_scripts.php`.
+- Перед выдачей файла целиком — проверить сущности (семестры, праздники,
+  расписание, предметы, подгруппы, КТП, студенты, **типы проектов**) и ловушки.
+- Админка — `lib/views/admin/<section>.php`. Партиалы — `_<name>_block.php`.
+  Общие — `_styles.php`, `_scripts.php`.
 - `actions.php` — только диспетчер. Обработчики — в `lib/actions/<domain>.php`.
-- README и context_prikaz.md — в обёртке ```` (четыре обратные кавычки), иначе скачивание ломается.
+- CI/CD-эталон — `projects/_templates/check.php` + `config.json` + `README.md`.
+  Новые типы получают копию при создании; правится копия, а не эталон.
+- README и context_prikaz.md — в обёртке ```` (четыре обратные кавычки),
+  иначе скачивание ломается.
 
 ---
 
@@ -199,6 +472,15 @@
 5. **Печать расписания** — не сделано.
 6. **Кэш `ktp_lesson_blocks`** — при 50+ предметах.
 7. **`_student_profile_form.php`** — удалить.
+8. **Реальный `check.php`** для типов проектов — эталон-заглушка уже стоит
+   в `_templates/check.php`, TODO 1–5 (PR, изменённые файлы, spec.md,
+   уникальность, `$details`). Нужно заполнить хотя бы для одного типа
+   и убедиться, что `config.json` (`gogs_base_url`, `gogs_token`, `gogs_owner`)
+   заполнен.
+9. **`_templates/config.json`** — пока справка, не читается из `check.php`.
+   Подключить, когда появится реальная проверка.
+10. **AJAX для типов проектов** — сейчас POST + `redirect()`. Можно
+    перевести на `ajaxSubmit()`, как темы и КТП.
 
 ---
 
@@ -244,6 +526,13 @@
 38. **`auth_attempt`** — админ по конфигу, остальные по БД. Логи в `diag.log`.
 39. **`prikaz_config()`** — читает `$GLOBALS['PRIKAZ_CONFIG']` с fallback на файл, `PRIKAZ_CONFIG_PATH` из `index.php`.
 40. **README** — v.0.1.6.0.
+41. **Типы проектов (`v.0.1.9.25`)** — `project_types` + `project_type_phases` + `project_type_checks`. CRUD в админке, кнопки «Проверить» / «Пересоздать папку» / «Удалить». `nav.php` — «🎓 Типы проектов». `data.php` — `$adminProjectTypes[Phases|Checks]`. `_styles.php` — `.pzk-ptype*`.
+42. **CI/CD-папка `projects/`** с `.htaccess`, `_templates/check.php` (эталон-заглушка с TODO 1–5), `_templates/config.json`, `_templates/README.md`. При создании типа — автокопирование.
+43. **`lib/project_types.php`** — `project_type_*()`, `project_type_check()`, `project_type_render_files()`, `project_type_validate_code()`. `bootstrap.php` — `require_once project_types.php`.
+44. **`lib/projects.php` переписан** — `project_types_meta()` из БД с fallback, `project_phases_for()`, `project_current_phase_num()` / `project_history_rows()` через `COALESCE`, `project_change_phase()` через `type_phase_id`.
+45. **`lib/actions/project_types.php`** — `admin_project_type_save/delete/regen_folder/check`, `admin_project_type_phase_save/delete`. `actions.php` — `admin_project_type_` **до** `admin_project_`.
+46. **`config.php`** — новые ключи `gogs_base_url`, `gogs_token`, `gogs_owner`.
+47. **`projects/`** — в корне `PRIKAZ_ROOT`; `.htaccess` закрывает прямой доступ.
 
 ---
 
@@ -251,30 +540,58 @@
 
 CLI на shared-хостинге нет. Открывать `db/init.php` в браузере.
 
-`https://<host>/prikaz/db/init.php` → «Готово». Учётные данные админа — в `config.php`. После — удалить `init.php`.
+`https://<host>/prikaz/db/init.php` → «Готово». Учётные данные админа —
+в `config.php`. После — удалить `init.php`.
 
 `?page=login` — вход.
+
+**Папка `projects/`** должна быть **записана** для веб-сервера (PHP-FPM),
+иначе `project_type_render_files()` упадёт на `mkdir` / `copy`.
+Если её нет — создать вручную и положить `.htaccess` (закрыть прямой доступ)
+и `_templates/check.php` (эталон). При первом «Проверить» тип создаст
+`projects/<code>/check.php` из шаблона, если его ещё нет.
+
+`gogs_base_url`, `gogs_token`, `gogs_owner` — заполнить в `config.php`,
+иначе реальные CI/CD-проверки не пойдут (эталон вернёт ошибки в `errors`).
 
 ---
 
 ## 11. Что делать в новом чате
 
 **Если «поправить / добавить»:**
-1. Проверить, что нужные файлы присланы целиком. Правки по админке — `lib/views/admin/<section>.php` или партиалы. Логика — `actions/<domain>.php`, `data.php`, `ktp.php`, `curriculum.php`, `students.php`.
+
+1. Проверить, что нужные файлы присланы целиком. Правки по админке —
+   `lib/views/admin/<section>.php` или партиалы. Логика —
+   `actions/<domain>.php`, `data.php`, `ktp.php`, `curriculum.php`,
+   `students.php`, `projects.php`, `project_types.php`.
+   CI/CD-эталон — `projects/_templates/check.php` + `config.json` + `README.md`.
 2. Если чего-то не хватает — попросить.
 3. Выдать файл целиком.
-4. Если правится одна секция — не трогать диспетчер и общие `_styles.php` / `_scripts.php`, если правка не касается их.
+4. Если правится одна секция — не трогать диспетчер и общие
+   `_styles.php` / `_scripts.php`, если правка не касается их.
 
 **Если «показать на демо»** — помнить:
+
 - праздники в карточках семестров, вычитаются из «Фактически часов» КТП;
 - расписание на семестр, одна запись на ячейку, подгруппы в названии группы;
 - КТП с блоками, фильтром, столбцом «№ по типу»;
 - студенты с обязательной группой при массовом добавлении;
 - пароль админа — только `config.php`;
-- личный кабинет студента — `?page=profile`, не в `?page=student`.
+- личный кабинет студента — `?page=profile`, не в `?page=student`;
+- **типы проектов** — `?page=admin&section=project_types`, у каждого свои
+  фазы, своя папка `projects/<code>/` с `check.php` (заглушка CI/CD),
+  кнопки «Проверить» / «Пересоздать папку» / «Удалить»;
+- `gogs_base_url`, `gogs_token`, `gogs_owner` — в `config.php`.
 
-**Если «доработать»** — см. «Открытые задачи».
+**Если «доработать»** — см. «Открытые задачи» (особенно п. 8: реальный
+`check.php` для конкретного типа).
 
-**Перед выдачей файла целиком** — пробежаться по ловушкам (34) и текущим сущностям: `semesters`, `holidays`, `schedule_entries`, `subjects`, `curriculum`, `ktp_entries`, `students`. Свериться, что хелперы секций не потерялись.
+**Перед выдачей файла целиком** — пробежаться по ловушкам (44) и текущим
+сущностям: `semesters`, `holidays`, `schedule_entries`, `subjects`,
+`curriculum`, `ktp_entries`, `students`, `project_types`, `project_type_phases`,
+`project_type_checks`. Свериться, что хелперы секций не потерялись,
+`bootstrap.php` требует `project_types.php`, а `actions.php` держит
+`admin_project_type_` **до** `admin_project_`.
 
-**Если «сгенерируй README / context»** — в обёртке ```` (четыре обратные кавычки), иначе внутренние блоки кода ломают скачивание.
+**Если «сгенерируй README / context»** — в обёртке ```` (четыре обратные
+кавычки), иначе внутренние блоки кода ломают скачивание.
