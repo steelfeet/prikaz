@@ -669,11 +669,12 @@ CREATE TABLE IF NOT EXISTS journal_marks (
     kind        TEXT NOT NULL DEFAULT 'group',
     mark        TEXT,
     note        TEXT,
+    weight      INTEGER NOT NULL DEFAULT 10,
     updated_by  INTEGER REFERENCES users(id),
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (subject_id, student_id, date, kind)
-);
+););
 CREATE INDEX IF NOT EXISTS idx_journal_marks_subject ON journal_marks(subject_id);
 CREATE INDEX IF NOT EXISTS idx_journal_marks_student ON journal_marks(student_id);
 
@@ -692,6 +693,23 @@ CREATE TABLE IF NOT EXISTS journal_lesson_notes (
 CREATE INDEX IF NOT EXISTS idx_journal_lesson_notes_subject ON journal_lesson_notes(subject_id);
 SQL);
 init_out('✓ journal_marks, journal_lesson_notes на месте', $isCli);
+
+// =============================================================================
+// Журнал: вес оценки.
+// Для существующих БД — добавляем колонку. Существующие оценки были
+// выставлены преподавателем вручную, поэтому получают вес 10.
+// =============================================================================
+$jmCols = [];
+foreach ($pdo->query('PRAGMA table_info(journal_marks)')->fetchAll() as $col) {
+    $jmCols[$col['name']] = true;
+}
+if (!isset($jmCols['weight'])) {
+    $pdo->exec('ALTER TABLE journal_marks ADD COLUMN weight INTEGER NOT NULL DEFAULT 10');
+    init_out('✓ journal_marks: добавлен вес (старые оценки получили вес 10)', $isCli);
+} else {
+    init_out('→ journal_marks: вес на месте', $isCli);
+}
+
 
 // =============================================================================
 // Типы проектов + фазы типа + проверки.

@@ -19,8 +19,17 @@ declare(strict_types=1);
  *     Оценка и примечание к уроку — одни, потому что привязаны к дате.
  *
  * Оценки и примечания к оценкам — journal_marks (subject_id, student_id,
- * date, kind). Примечания к уроку и ДЗ (общие на дату) —
+ * date, kind, weight). Примечания к уроку и ДЗ (общие на дату) —
  * journal_lesson_notes (subject_id, date, kind).
+ *
+ * Вес оценки (weight):
+ *   1   — автоматическая проверка (новости, тесты)
+ *   3   — самостоятельная, домашняя
+ *   5   — контрольная, важное задание
+ *   10  — весомая оценка преподавателя (по умолчанию)
+ *   В расчёте среднего участвуют только числовые оценки (2–5). `н`, `ну`,
+ *   `·` в средневзвешенный не идут (только посещаемость). Минус (`4-`) —
+ *   только отображение, на взвешенный не влияет.
  */
 
 function journal_kind_label(string $kind): string
@@ -114,13 +123,13 @@ function journal_students(int $subjectId, ?PDO $pdo = null): array
 }
 
 /**
- * Оценки по предмету: [student_id][kind][date] = ['mark'=>, 'note'=>].
+ * Оценки по предмету: [student_id][kind][date] = ['mark'=>, 'note'=>, 'weight'=>].
  */
 function journal_marks_map(int $subjectId, ?PDO $pdo = null): array
 {
     if ($pdo === null) $pdo = db();
     $stmt = $pdo->prepare(
-        'SELECT student_id, kind, date, mark, note
+        'SELECT student_id, kind, date, mark, note, weight
          FROM journal_marks WHERE subject_id = :s'
     );
     $stmt->execute([':s' => $subjectId]);
@@ -130,8 +139,9 @@ function journal_marks_map(int $subjectId, ?PDO $pdo = null): array
         $k   = (string) $r['kind'];
         $d   = (string) $r['date'];
         $map[$sid][$k][$d] = [
-            'mark' => $r['mark'] !== null ? (string) $r['mark'] : '',
-            'note' => $r['note'] !== null ? (string) $r['note'] : '',
+            'mark'   => $r['mark'] !== null ? (string) $r['mark'] : '',
+            'note'   => $r['note'] !== null ? (string) $r['note'] : '',
+            'weight' => max(1, (int) ($r['weight'] ?? 10)),
         ];
     }
     return $map;
@@ -160,12 +170,13 @@ function journal_lesson_notes_map(int $subjectId, ?PDO $pdo = null): array
 }
 
 /**
- * Сохранить оценку. Если mark и note оба пустые — строка удаляется.
+ * Сохранить оценку с весом. Если mark и note оба пустые — строка удаляется.
  */
 function journal_mark_apply(int $subjectId, int $studentId, string $date, string $kind,
-                            string $mark, string $note, int $userId, ?PDO $pdo = null): void
+                            string $mark, string $note, int $weight, int $userId, ?PDO $pdo = null): void
 {
     if ($pdo === null) $pdo = db();
+
     if ($mark === '' && $note === '') {
         $pdo->prepare(
             'DELETE FROM journal_marks
@@ -173,12 +184,14 @@ function journal_mark_apply(int $subjectId, int $studentId, string $date, string
         )->execute([':s' => $subjectId, ':st' => $studentId, ':d' => $date, ':k' => $kind]);
         return;
     }
+
+    $weight = max(1, $weight);
     $now = date('Y-m-d H:i:s');
     $pdo->prepare(
-        'INSERT INTO journal_marks (subject_id, student_id, date, kind, mark, note, updated_by, updated_at)
-         VALUES (:s, :st, :d, :k, :m, :n, :u, :t)
+        'INSERT INTO journal_marks (subject_id, student_id, date, kind, mark, note, weight, updated_by, updated_at)
+         VALUES (:s, :st, :d, :k, :m, :n, :w, :u, :t)
          ON CONFLICT(subject_id, student_id, date, kind)
-         DO UPDATE SET mark = excluded.mark, note = excluded.note,
+         DO UPDATE SET mark = excluded.mark, note = excluded.note, weight = excluded.weight,
                        updated_by = excluded.updated_by, updated_at = excluded.updated_at'
     )->execute([
         ':s'  => $subjectId,
@@ -187,6 +200,7 @@ function journal_mark_apply(int $subjectId, int $studentId, string $date, string
         ':k'  => $kind,
         ':m'  => $mark !== '' ? $mark : null,
         ':n'  => $note !== '' ? $note : null,
+        ':w'  => $weight,
         ':u'  => $userId,
         ':t'  => $now,
     ]);
@@ -277,15 +291,10 @@ function journal_render_grid(int $subjectId, string $kind, int $page, array $cur
     $totalPages      = max(1, (int) ceil($totalPast / $pageSize));
     if ($page < 0 || $page >= $totalPages) $page = $totalPages - 1;
 
-    // Уроки текущей страницы — строго по pageSize.
     $pageLessons = array_slice($pastLessons, $page * $pageSize, $pageSize);
+    $columns     = journal_dates($pageLessons);
+    $futureFrom  = count($columns);
 
-    // Уникальные даты из этих уроков. Если дата разорвана, на странице будет
-    // только её часть — но колонка одна, оценка одна.
-    $columns = journal_dates($pageLessons);
-    $futureFrom = count($columns);
-
-    // Последняя страница — добавляем до 3 будущих уроков, дата целиком.
     if ($page === $totalPages - 1 && $futureLessons !== []) {
         $futureDates = journal_dates($futureLessons);
         $fCount = 0;
@@ -316,69 +325,107 @@ function journal_render_grid(int $subjectId, string $kind, int $page, array $cur
     $startIdx      = $totalPast === 0 ? 0 : $page * $pageSize + 1;
     $endIdx        = min(($page + 1) * $pageSize, $totalPast);
 
+    $defaultWeight = (int) (prikaz_config()['default_grade_weight'] ?? 10);
+
     ob_start();
     require __DIR__ . '/views/_journal_grid.php';
     return (string) ob_get_clean();
 }
 
 /**
- * Агрегаты по журналу (старая модель lessons/grades).
+ * Агрегаты по журналу.
  *
- * $marks — [student_id][lesson_ord] => '5'|'4'|'3'|'2'|'н'|'·'
+ * Поддерживает два источника:
+ *   1. Старая модель (grades/lessons): $marks — [student_id][lesson_ord] => mark.
+ *   2. Новая модель (journal_marks): $marks — [student_id][kind][date] => ['mark'=>, 'weight'=>].
  *
- * Возвращает:
- *   total   — всего оценок 5/4/3/2
- *   sum     — сумма баллов
- *   count   — количество оценок
- *   avg     — средний балл (null если count=0)
+ * В обоих случаях возвращает:
+ *   total   — всего числовых оценок 5/4/3/2
+ *   sum     — сумма баллов (без веса)
+ *   count   — количество числовых оценок
+ *   raw_avg — обычный средний
+ *   weighted_sum   — Σ(оценка × вес)
+ *   weight_total   — Σ(вес)
+ *   weighted_avg   — взвешенный средний (null если оценок нет)
+ *   is_preliminary — true, если Σ(вес) < min_weight_for_final
+ *   recommended    — 2..5 по взвешенному (null если оценок нет)
  *   dist    — [5=>n, 4=>n, 3=>n, 2=>n]
- *   lessons — [ord => ['sum','count','avg','dist']] по каждому уроку
+ *   lessons — [key => ['sum','count','avg','dist']]
  */
 function aggregate_journal(array $marks): array
 {
-    $total = 0;
-    $sum   = 0;
-    $count = 0;
-    $dist  = [5 => 0, 4 => 0, 3 => 0, 2 => 0];
+    $minWeight = (int) (prikaz_config()['min_weight_for_final'] ?? 10);
+
+    $total = 0; $sum = 0; $count = 0;
+    $wSum = 0; $wTotal = 0;
+    $dist = [5 => 0, 4 => 0, 3 => 0, 2 => 0];
     $lessons = [];
 
-    foreach ($marks as $studentId => $studentMarks) {
-        if (!is_array($studentMarks)) continue;
-        foreach ($studentMarks as $ord => $mark) {
-            if (!in_array($mark, ['5', '4', '3', '2'], true)) continue;
-            $g = (int) $mark;
+    foreach ($marks as $studentId => $row) {
+        if (!is_array($row)) continue;
+        foreach ($row as $key => $value) {
+            $mark   = '';
+            $weight = 10;
+
+            if (is_array($value)) {
+                // Новая модель
+                $mark   = (string) ($value['mark']   ?? '');
+                $weight = max(1, (int) ($value['weight'] ?? 10));
+            } elseif (is_scalar($value)) {
+                // Старая модель — без веса
+                $mark   = (string) $value;
+                $weight = 1;
+            }
+
+            if (!preg_match('/^([2-5])(?:\s*[-−—])?$/u', $mark, $mm)) continue;
+            $g = (int) $mm[1];
+
             $total++;
-            $sum += $g;
-            $count++;
+            $sum += $g; $count++;
+            $wSum += $g * $weight; $wTotal += $weight;
             $dist[$g]++;
 
-            if (!isset($lessons[$ord])) {
-                $lessons[$ord] = [
-                    'sum'   => 0,
-                    'count' => 0,
-                    'dist'  => [5 => 0, 4 => 0, 3 => 0, 2 => 0],
-                ];
+            if (!isset($lessons[$key])) {
+                $lessons[$key] = ['sum' => 0, 'count' => 0, 'w_sum' => 0, 'w_total' => 0,
+                                  'dist' => [5 => 0, 4 => 0, 3 => 0, 2 => 0]];
             }
-            $lessons[$ord]['sum'] += $g;
-            $lessons[$ord]['count']++;
-            $lessons[$ord]['dist'][$g]++;
+            $lessons[$key]['sum'] += $g;
+            $lessons[$key]['count']++;
+            $lessons[$key]['w_sum'] += $g * $weight;
+            $lessons[$key]['w_total'] += $weight;
+            $lessons[$key]['dist'][$g]++;
         }
     }
 
-    $avg = $count > 0 ? round($sum / $count, 2) : null;
+    $rawAvg      = $count > 0 ? round($sum / $count, 2) : null;
+    $weightedAvg = $wTotal > 0 ? round($wSum / $wTotal, 2) : null;
 
-    foreach ($lessons as $ord => &$l) {
+    $recommended = null;
+    if ($weightedAvg !== null) {
+        if ($weightedAvg >= 4.5)      $recommended = 5;
+        elseif ($weightedAvg >= 3.5)  $recommended = 4;
+        elseif ($weightedAvg >= 2.5)  $recommended = 3;
+        else                          $recommended = 2;
+    }
+
+    foreach ($lessons as $key => &$l) {
         $l['avg'] = $l['count'] > 0 ? round($l['sum'] / $l['count'], 2) : null;
+        $l['weighted_avg'] = $l['w_total'] > 0 ? round($l['w_sum'] / $l['w_total'], 2) : null;
     }
     unset($l);
 
     return [
-        'total'   => $total,
-        'sum'     => $sum,
-        'count'   => $count,
-        'avg'     => $avg,
-        'dist'    => $dist,
-        'lessons' => $lessons,
+        'total'          => $total,
+        'sum'            => $sum,
+        'count'          => $count,
+        'raw_avg'        => $rawAvg,
+        'weighted_sum'   => $wSum,
+        'weight_total'   => $wTotal,
+        'weighted_avg'   => $weightedAvg,
+        'is_preliminary' => $wTotal < $minWeight,
+        'recommended'    => $recommended,
+        'dist'           => $dist,
+        'lessons'        => $lessons,
     ];
 }
 
@@ -436,6 +483,9 @@ function journal_slice_page(array $allLessons, int $pageSize, int $page): array
  *
  * Оценки и примечания к оценкам — только свои. Примечания к урокам и ДЗ —
  * общие.
+ *
+ * В $dateInfo[$d] добавлены 'weights' — параллельный 'marks' массив весов,
+ * чтобы _journal_student.php мог показать бейдж веса.
  */
 function journal_render_student(int $subjectId, string $kind, int $page, array $currentUser): string
 {
@@ -470,7 +520,6 @@ function journal_render_student(int $subjectId, string $kind, int $page, array $
         return '<div class="uni-empty">Нет уроков: в КТП нет тем этого вида, либо КТП не сгенерировано.</div>';
     }
 
-    // ASC — от старых к свежим.
     usort($allLessons, fn($a, $b) => strcmp($a['date'], $b['date']));
 
     $pageSize     = ($kind === 'sub') ? 17 : 35;
@@ -515,14 +564,19 @@ function journal_render_student(int $subjectId, string $kind, int $page, array $
     foreach ($columns as $col) {
         $d = $col['date'];
 
-        $marksList = [];
-        $markNote  = '';
+        $marksList   = [];
+        $weightsList = [];
+        $markNote    = '';
         foreach ($kinds as $k) {
             $m = $myMarksByKind[$k][$d] ?? null;
             if (!$m) continue;
             $mv = (string) ($m['mark'] ?? '');
             $mn = (string) ($m['note'] ?? '');
-            if ($mv !== '') $marksList[] = $mv;
+            $mw = max(1, (int) ($m['weight'] ?? 10));
+            if ($mv !== '') {
+                $marksList[]   = $mv;
+                $weightsList[] = $mw;
+            }
             if ($markNote === '' && $mn !== '') $markNote = $mn;
         }
 
@@ -539,6 +593,7 @@ function journal_render_student(int $subjectId, string $kind, int $page, array $
 
         $dateInfo[$d] = [
             'marks'        => $marksList,
+            'weights'      => $weightsList,
             'mark_display' => implode('/', $marksList),
             'mark_note'    => $markNote,
             'lesson_note'  => $lessonNote,
@@ -546,7 +601,6 @@ function journal_render_student(int $subjectId, string $kind, int $page, array $
         ];
     }
 
-    // Обратный порядок — только для списка тем.
     $columnsDesc = array_reverse($columns);
 
     $totalPagesOut = $totalPages;

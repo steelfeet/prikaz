@@ -38,7 +38,10 @@ foreach ($stmt->fetchAll() as $g) {
         if ((int) $l['id'] === (int) $g['lesson_id']) { $lessonOrd = $ord; break; }
     }
     if ($lessonOrd === null) continue;
-    $journalMarks[(int) $g['student_id']][$lessonOrd] = $g['mark'];
+    $journalMarks[(int) $g['student_id']][$lessonOrd] = [
+        'mark'   => (string) $g['mark'],
+        'weight' => max(1, (int) ($g['weight'] ?? 10)),
+    ];
     if (!empty($g['note'])) $journalNotes[(int) $g['student_id']][$lessonOrd] = $g['note'];
 }
 
@@ -61,35 +64,95 @@ foreach ($mockProjects as $proj) {
     }
 }
 
-// ===== Агрегаты журнала =====
-$journalSummary = aggregate_journal($journalMarks);
-$perStudentSummary = [];
-foreach ($studentsRows as $st) {
-    $sid = (int) $st['id'];
-    $row = $journalMarks[$sid] ?? [];
-    $sSum = 0; $sCount = 0; $sAbsent = 0; $sPresent = 0;
-    $sDist = [5 => 0, 4 => 0, 3 => 0, 2 => 0];
-    foreach ($row as $m) {
-        if ($m === 'н') {
-            $sAbsent++;
-        } elseif (in_array($m, ['5', '4', '3', '2'], true)) {
-            $g = (int) $m; $sSum += $g; $sCount++;
-            $sDist[$g] = ($sDist[$g] ?? 0) + 1; $sPresent++;
-        } elseif ($m === '·') {
-            $sPresent++;
+// ===== Агрегаты журнала (с весами) =====
+// Основной источник — journal_marks (новая модель). Fallback — grades
+// (старая модель), если journal_marks пуста.
+$journalMarkRowsByStudent = [];
+try {
+    $stmt = $pdo->query(
+        "SELECT student_id, mark, weight FROM journal_marks
+         WHERE mark IS NOT NULL AND mark <> ''"
+    );
+    foreach ($stmt->fetchAll() as $r) {
+        $sid = (int) $r['student_id'];
+        if (!isset($journalMarkRowsByStudent[$sid])) $journalMarkRowsByStudent[$sid] = [];
+        $journalMarkRowsByStudent[$sid][] = [
+            'mark'   => (string) $r['mark'],
+            'weight' => max(1, (int) ($r['weight'] ?? 10)),
+        ];
+    }
+} catch (Throwable $e) {
+    // journal_marks ещё нет — работаем по grades
+}
+
+if ($journalMarkRowsByStudent === []) {
+    foreach ($journalMarks as $sid => $row) {
+        foreach ($row as $m) {
+            $mark = is_array($m) ? (string) ($m['mark'] ?? '') : (string) $m;
+            $weight = is_array($m) ? max(1, (int) ($m['weight'] ?? 10)) : 10;
+            $journalMarkRowsByStudent[$sid][] = ['mark' => $mark, 'weight' => $weight];
         }
     }
+}
+
+$minWeightForFinal = (int) (prikaz_config()['min_weight_for_final'] ?? 10);
+
+$journalSummary = aggregate_journal($journalMarks);
+
+$perStudentSummary = [];
+foreach ($studentsRows as $st) {
+    $sid   = (int) $st['id'];
+    $rows  = $journalMarkRowsByStudent[$sid] ?? [];
+
+    $sSum = 0; $sCount = 0;
+    $wSum = 0; $wTotal = 0;
+    $sAbsent = 0; $sPresent = 0;
+    $sDist = [5 => 0, 4 => 0, 3 => 0, 2 => 0];
+
+    foreach ($rows as $r) {
+        $m = (string) $r['mark'];
+        $w = max(1, (int) $r['weight']);
+        if ($m === 'н') { $sAbsent++; continue; }
+        if ($m === '·') { $sPresent++; continue; }
+        if (preg_match('/^([2-5])(?:\s*[-−—])?$/u', $m, $mm)) {
+            $g = (int) $mm[1];
+            $sSum += $g; $sCount++;
+            $wSum += $g * $w; $wTotal += $w;
+            $sDist[$g] = ($sDist[$g] ?? 0) + 1; $sPresent++;
+        }
+    }
+
+    $rawAvg      = $sCount > 0 ? round($sSum / $sCount, 2) : null;
+    $weightedAvg = $wTotal > 0 ? round($wSum / $wTotal, 2) : null;
+
+    $recommended = null;
+    if ($weightedAvg !== null) {
+        if ($weightedAvg >= 4.5)      $recommended = 5;
+        elseif ($weightedAvg >= 3.5)  $recommended = 4;
+        elseif ($weightedAvg >= 2.5)  $recommended = 3;
+        else                          $recommended = 2;
+    }
+
     $perStudentSummary[$sid] = [
-        'student'    => $st,
-        'sum'        => $sSum,
-        'count'      => $sCount,
-        'avg'        => $sCount > 0 ? round($sSum / $sCount, 2) : null,
-        'absent'     => $sAbsent,
-        'present'    => $sPresent,
-        'dist'       => $sDist,
-        'attendance' => ($sAbsent + $sPresent) > 0 ? round($sPresent / ($sAbsent + $sPresent) * 100, 1) : null,
+        'student'        => $st,
+        'sum'            => $sSum,
+        'count'          => $sCount,
+        'raw_avg'        => $rawAvg,
+        'weighted_avg'   => $weightedAvg,
+        'weight_total'   => $wTotal,
+        'recommended'    => $recommended,
+        'is_preliminary' => $wTotal < $minWeightForFinal,
+        'absent'         => $sAbsent,
+        'present'        => $sPresent,
+        'dist'           => $sDist,
+        'attendance'     => ($sAbsent + $sPresent) > 0
+            ? round($sPresent / ($sAbsent + $sPresent) * 100, 1)
+            : null,
+        // Совместимость со старыми шаблонами:
+        'avg'            => $weightedAvg ?? $rawAvg,
     ];
 }
+
 
 // ===== Профиль по роли =====
 $studentProfile = null;

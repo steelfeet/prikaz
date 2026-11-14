@@ -16,35 +16,61 @@
 Сессии, CSRF, аудит — вручную. Разворачивается на shared-хостинге копированием
 файлов.
 
-**Текущая версия: v.0.1.9.25** — типы проектов, фазы типа, CI/CD-проверки
-в папке `projects/`.
+**Текущая версия: v.0.1.10.27** — вес оценки в журнале, цвета фаз типа
+проекта, CI/CD-проверка для «Новости ИТ», студенты вынесены из «Пользователей».
 
 ---
 
-## Что нового в v.0.1.9.25
+## Что нового
 
-- Сущность **Тип проекта** (`project_types`). Редактируется администратором
-  в разделе «🎓 Типы проектов».
-- У каждого типа — **свои фазы** (`project_type_phases`), настраиваются там же.
-- Проект привязывается к типу через `projects.project_type_id`. История
-  переходов пишется в `project_history.type_phase_id`.
-- Для каждого типа — **своя папка CI/CD** `projects/<code>/` с файлом
-  `check.php`. При создании типа туда автоматически копируется эталон
-  из `projects/_templates/check.php`.
-- В админке у типа есть кнопки:
-  - **✅ Проверить** — запускает `projects/<code>/check.php` с контекстом
-    `$ctx` (тип, Gogs, проекты этого типа) и пишет результат в
-    `project_type_checks`;
-  - **♻ Пересоздать папку** — принудительно перезаписывает `check.php`
-    из эталона (ручные правки теряются);
-  - **Удалить** — отказ, если к типу привязаны проекты; папка остаётся
-    на диске.
-- Новые ключи в `config.php`: `gogs_base_url`, `gogs_token`, `gogs_owner`.
-  Без них реальные запросы к Gogs не пройдут (эталон `check.php` вернёт
-  ошибки в `errors`).
-- Старая модель (глобальные `project_phases`, `projects.type` строкой,
-  `project_history.phase_id`) сохранена как fallback для проектов
-  с `project_type_id IS NULL`.
+### v.0.1.10.26 — вес оценки
+
+- У оценки в журнале появился **вес** (1 / 3 / 5 / 10).
+- В модалке оценки — выбор веса, по умолчанию — `10` (весомая оценка
+  преподавателя).
+- В сетке журнала и в личном кабинете студента рядом с оценкой — маленький
+  бейдж веса (серый — 1, оливковый — 3–5, тёмно-красный — 10+).
+- В агрегатах считается **взвешенный средний**:
+  `Σ(оценка × вес) / Σ(вес)`. Три пятёрки за новости (вес 1) не перевешивают
+  одну тройку за контрольную (вес 10): `45/13 ≈ 3.46`, а не `4.5`.
+- Пока `Σ(вес) < min_weight_for_final` (по умолчанию 10) — средний считается
+  предварительным.
+- Новые ключи в `config.php`: `default_grade_weight`, `auto_grade_weight`,
+  `min_weight_for_final`.
+- Миграция `journal_marks`: `ALTER TABLE ... ADD COLUMN weight INTEGER NOT NULL DEFAULT 10`.
+
+### v.0.1.9.26 — цвета фаз типа проекта
+
+- У фазы типа проекта есть цвет. В админке — палитра из 10 цветов:
+  нативный пикер, hex-поле, свотчи.
+- При добавлении новой фазы цвет подбирается **по очереди** от
+  `count($phases)`, свободные позиции палитры пропускаются; если заняты все
+  10 — стартовый цвет берётся циклически.
+- Форма редактирования фазы показывает текущий цвет подсвеченным в палитре.
+
+### v.0.1.9.25 — типы проектов и CI/CD
+
+- Сущность **Тип проекта** (`project_types`) с фазами (`project_type_phases`).
+  Редактируется администратором в разделе «🎓 Типы проектов».
+- Для каждого типа — папка `projects/<code>/` с файлом `check.php`
+  (заглушка CI/CD). При создании типа копируется эталон из
+  `projects/_templates/check.php`.
+- Кнопки в админке: **✅ Проверить** (dry-run), **🚀 Проверить и применить**
+  (реальные merge / close / comment в Gogs), **♻ Пересоздать папку**,
+  **Удалить**.
+- `projects/_templates/check.php` — эталон для всех типов. Для «Новости ИТ
+  и ИБ» — свой `check.php` с 10 проверками (см. ниже).
+
+### Чистка: студенты — не в «Пользователях»
+
+- Раздел «👥 Пользователи» — только преподаватели, родители, администраторы.
+- Студенты создаются и редактируются в «🎒 Студенты» — там же личное дело,
+  группа, логин для Gogs, личный кабинет.
+- В `data.php` запрос `$adminUsers` фильтрует и `students.user_id`,
+  и роль `student`.
+- В `lib/actions/users.php` — guard: `admin_user_toggle` /
+  `admin_user_reset_password` для пользователя-студента отклоняются, даже
+  если POST пришёл напрямую.
 
 ---
 
@@ -54,12 +80,12 @@
 |---|---|
 | Учебный процесс | Учебные годы, семестры, группы, предметы, темы, расписание, праздники |
 | КТП | Календарно-тематическое планирование: распределение тем по датам в соответствии с расписанием, с учётом праздников |
-| Журнал | Сетка «студенты × занятия», оценки 2–5 (с минусом и примечаниями), «н»/«ну», обновление без перезагрузки |
+| Журнал | Сетка «студенты × занятия», оценки 2–5 с весом 1/3/5/10, минус (кроме 2), «н»/«ну», обновление без перезагрузки |
 | Студенты | Личные дела, массовое добавление, личный кабинет (email, VK, Telegram, пароль) |
 | Проекты | Типы проектов, фазы типа, участники, история переходов, CI/CD-проверки по каждому типу |
 | Аттестация | Фазы проектов и переходы между ними, сводка по студентам и группам |
 | Родители | Привязка к студенту, просмотр журнала и проектов, фиксация визитов |
-| Админка | Пользователи, студенты, родители, уроки, типы проектов, проекты, аудит |
+| Пользователи | Преподаватели, родители, администраторы — **без студентов** |
 | Аудит | Лог действий с IP, привязка к пользователю, типу и id цели |
 
 ---
@@ -70,8 +96,7 @@
 - Web-сервер (Apache / Nginx + PHP-FPM).
 - Права на запись:
   - `prikaz-data/` — для SQLite и `diag.log`;
-  - `projects/` — для создания `projects/<code>/check.php` (если папки нет,
-    создаётся при первом «Проверить»).
+  - `projects/` — для создания `projects/<code>/check.php`.
 - Опционально: доступ к Gogs (для реальных CI/CD-проверок).
 
 ---
@@ -79,15 +104,16 @@
 ## Быстрый старт
 
 1. Скопировать каталог `prikaz/` на хостинг.
-2. Настроить `config.php` (см. ниже).
-3. Открыть в браузере `https://<host>/prikaz/db/init.php` → «Готово».
-   БД создастся в `prikaz-data/`. Учётные данные админа — из `config.php`.
+2. Настроить `config.php`.
+3. `https://<host>/prikaz/db/init.php` → «Готово». БД создастся в
+   `prikaz-data/`. Администратор — из `config.php`.
 4. Удалить `db/init.php`.
 5. Войти: `?page=login`.
 6. Создать учебный год, семестры, группы, предметы, темы, расписание, КТП.
-7. Настроить **типы проектов** в `?page=admin&section=project_types`.
-
-CLI на shared-хостинге обычно нет — `init.php` открывается в браузере.
+7. Завести студентов в разделе «🎒 Студенты» (**не** в «👥 Пользователи»).
+8. Настроить **типы проектов** в `?page=admin&section=project_types`.
+9. Для каждого типа — открыть `projects/<code>/check.php` и заполнить
+   реальные проверки (эталон — `_templates/check.php`).
 
 ---
 
@@ -109,17 +135,20 @@ return [
     // Gogs — для CI/CD-проверок типов проектов.
     'gogs_base_url' => 'https://gogs.example',
     'gogs_token'    => '…',          // personal access token, scope repo (read)
-    'gogs_owner'    => 'kolledzh',   // fallback, если у типа не задан gogs_owner
+    'gogs_owner'    => 'kolledzh',
+
+    // Вес оценки
+    'default_grade_weight' => 10,    // вес по умолчанию для ручной оценки преподавателя
+    'auto_grade_weight'    => 1,     // вес авто-оценки (например, за принятую новость)
+    'min_weight_for_final' => 10,    // пока Σ(вес) < этого — средний предварительный
 ];
 ```
 
-- Пароль администратора хранится **только** в `config.php`. Через веб
-  сменить его нельзя. `admin_user_reset_password` / `admin_user_toggle`
-  для админа — отказ. `admin_user_create` с логином `admin` — отказ.
-- Пароли остальных пользователей — `password_hash(PASSWORD_DEFAULT)`
-  в `users.password_hash`, авто-рехэш при входе.
-- `gogs_*` нужны только если планируется запускать реальные CI/CD-проверки.
-  Эталон `check.php` без них вернёт ошибки.
+- Пароль администратора хранится только в `config.php`. Через веб сменить его
+  нельзя. `admin_user_reset_password` / `admin_user_toggle` для админа — отказ.
+- Пароли остальных — `password_hash(PASSWORD_DEFAULT)`, авто-рехэш при входе.
+- `gogs_*` нужны только для реальных CI/CD-проверок; без них эталон
+  `check.php` вернёт ошибки.
 
 ---
 
@@ -128,55 +157,43 @@ return [
 ```
 prikaz/
   index.php              — роутер (?page=…), ob_start(), bootstrap, views
-  config.php             — настройки (см. выше)
+  config.php             — настройки
   bootstrap.php          — конфиг, сессия, db(), csrf, auth, audit, require_once lib/*
   actions.php            — POST-диспетчер ($action → lib/actions/<domain>.php)
-  data.php               — загрузка данных для рендера
+  data.php               — данные для рендера (учёт веса оценок)
   nav.php                — меню (admin / teacher / parent / student)
-  profile.php            — личный кабинет (все роли)
+  profile.php            — личный кабинет
   student.php            — страница студента (проекты, журнал)
   help_widget.php        — плавающая «?»
   lib/
     utils.php            — e(), redirect(), json_response(), flash_*, wants_json(),
-                           hash_password, prikaz_config, prikaz_is_admin_login,
-                           prikaz_check_admin_password, parse_topic_lines, topic_key
-    journal.php          — агрегаты журнала, сетка
+                           prikaz_config, prikaz_is_admin_login, prikaz_check_admin_password
+    journal.php          — журнал: journal_lessons, journal_marks_map, journal_mark_apply,
+                           aggregate_journal (с весами), journal_render_grid,
+                           journal_render_student
     schedule.php         — schedule_*
-    ktp.php              — ktp_* (блоки, праздники, layout, generate, add_more, delete)
+    ktp.php              — ktp_*
     curriculum.php       — curriculum_*
-    students.php         — students_*, parse_student_lines, student_*
+    students.php         — students_*
     projects.php         — project_phases_meta, project_types_meta, project_phases_for,
                            project_current_phase_num, project_history_rows,
-                           project_students_rows, project_change_phase
-    project_types.php    — project_types_dir, project_types_templates_dir, project_type_dir,
-                           project_types_all, project_type_by_id, project_type_by_code,
-                           project_type_phases, project_type_checks_recent,
-                           project_type_validate_code, project_type_save, project_type_delete,
-                           project_type_render_files, project_type_check
+                           project_change_phase
+    project_types.php    — project_type_save/delete/render_files/check,
+                           project_type_phase_palette, project_type_next_phase_color
     actions/
-      auth.php           — logout, change_own_password
-      journal.php        — grade_set, journal_mark_set, journal_lesson_note_set
-      projects.php       — project_move_phase
-      project_types.php  — admin_project_type_* (save/delete/regen_folder/check)
-                           + admin_project_type_phase_* (save/delete)
-      academic.php       — admin_academic_year_*, admin_group_*, admin_semester_*,
-                           admin_holiday_*
-      subjects.php       — admin_subject_*, admin_curriculum_*, admin_ktp_*
-      schedule.php       — admin_schedule_*
-      users.php          — admin_user_*
-      students.php       — admin_student_*, admin_parent_*, student_profile_save
-      lessons.php        — admin_lesson_*
-      misc.php           — help_feedback
+      auth.php, journal.php, projects.php, project_types.php,
+      academic.php, subjects.php, schedule.php,
+      users.php (без студентов), students.php, lessons.php, misc.php
   lib/views/
-    admin.php            — диспетчер секций (?page=admin&section=…)
+    admin.php
     admin/academic_years.php, groups.php, subjects.php, schedule.php,
-          users.php, students.php, parents.php, lessons.php,
+          users.php (без студентов), students.php, parents.php, lessons.php,
           projects.php, project_types.php, audit.php
-    admin/_topics_block.php, _ktp_block.php
-    admin/_styles.php, _scripts.php
+    admin/_topics_block.php, _ktp_block.php, _styles.php, _scripts.php
+    _journal_grid.php, _journal_student.php
     login.php, journal.php, teacher.php, student.php, parent.php, profile.php, …
-  db/init.php            — инициализация/сброс БД (в браузере)
-  projects/              — CI/CD-проверки (v.0.1.9.25)
+  db/init.php            — инициализация/миграция БД (в браузере)
+  projects/              — CI/CD-проверки
     .htaccess            — закрывает прямой доступ
     _templates/
       check.php          — эталон-заглушка (большой комментарий сверху)
@@ -194,9 +211,9 @@ prikaz/
 
 | Роль | Что делает |
 |---|---|
-| `admin` | Пользователи, студенты, родители. Учебный процесс (годы, семестры, группы, предметы, темы, расписание, КТП, праздники), уроки, **типы проектов и их фазы**, проекты, аудит. Пароль — из `config.php` |
-| `teacher` | Журнал (оценки, заметки), фазы проектов, сводка, активность родителей |
-| `student` | Свои оценки, заметки, проекты, фазы. Личный кабинет: email, VK, Telegram, пароль (не логин/ФИО) |
+| `admin` | Пользователи (преподаватели, родители, администраторы — **без студентов**), студенты (отдельный раздел). Учебный процесс, уроки, **типы проектов и их фазы**, проекты, аудит |
+| `teacher` | Журнал (оценки с весом, заметки), фазы проектов, сводка, активность родителей |
+| `student` | Свои оценки с весами, заметки, проекты, фазы. Личный кабинет: email, VK, Telegram, пароль |
 | `parent` | Журнал и проекты своего ребёнка. Факт захода фиксируется |
 
 Самостоятельной регистрации нет.
@@ -208,42 +225,70 @@ prikaz/
 Меню: «📅 Учебный процесс» → «Учебный год», «Группы», «Предметы и темы».
 
 - **Учебный год** (`academic_years`): `name`, `start_date`, `end_date`,
-  `is_current` (UNIQUE INDEX). При создании — семестры «1 семестр»
-  и «2 семестр».
+  `is_current` (UNIQUE). При создании — семестры «1 семестр», «2 семестр».
 - **Семестры** (`semesters`): `academic_year_id`, `name`, `is_practice`, `ord`.
 - **Праздники** (`holidays`): `semester_id`, `date`, `name`.
   UNIQUE `(semester_id, date)`. Влияют на КТП (вычитаются из «Фактически часов»).
 - **Группы** (`groups`): `academic_year_id`, `name`, `curator`, `notes`.
-  UNIQUE `(academic_year_id, name)`. Inline-редактирование под строкой.
-- **Предметы** (`subjects`): `semester_id`, `group_id`, `short_name`,
-  `full_name`, `hours`. UNIQUE `(semester_id, group_id, short_name)`.
   Inline-редактирование под строкой.
-- **Темы** (`curriculum`): `subject_id`, `ord`, `topic`.
-  UNIQUE `(subject_id, ord)`. Inline, «+ Добавить ниже», всё AJAX.
+- **Предметы** (`subjects`): `semester_id`, `group_id`, `short_name`,
+  `full_name`, `hours`. Inline-редактирование.
+- **Темы** (`curriculum`): `subject_id`, `ord`, `topic`. Inline, «+ Добавить
+  ниже», всё AJAX.
 
 ### КТП
 
 Одна тема = один блок. Групповой блок — пара (1,2), (3,4)… Подгрупповой
-блок — все `sub1`/`sub2` дня = один блок. Праздники пропускаются.
-Шапка: «Часов по учебному плану / По тарификации / В КТП / Фактически часов»
-+ список праздников + фильтр «Все / Лекция / Практикум».
-Столбец «№ по типу» появляется при фильтре. Sticky-шапка и `thead th`.
-Все операции — AJAX.
+блок — все `sub1`/`sub2` дня = один блок. Праздники пропускаются. Шапка:
+«Часов по учебному плану / По тарификации / В КТП / Фактически часов» +
+список праздников + фильтр «Все / Лекция / Практикум». Столбец «№ по типу»
+появляется при фильтре. Sticky-шапка и `thead th`. Все операции — AJAX.
 
 ---
 
 ## Журнал
 
-Сетка «студенты × занятия». Оценки 2, 3, 4, 5 с примечаниями и минусом
-(кроме 2), «н» / «ну». Примечание по текущему уроку, Д.3 в примечаниях.
-Тема и ДЗ по клику на дату. Обновление без перезагрузки. Студент видит
-только свой журнал с общими примечаниями и своими.
+Сетка «студенты × занятия». Столбцы — даты уроков КТП, строки — студенты
+группы. Обновление без перезагрузки.
+
+**Оценки:** 2, 3, 4, 5. Минус к 3/4/5 (`3-`, `4-`, `5-`) — только отображение,
+на взвешенный средний не влияет. Отметки `н` (отсутствовал) и `ну`
+(не уважительная) — посещаемость, в расчёт среднего не идут.
+
+**Вес оценки** (`journal_marks.weight`):
+
+| Вес | Что это | Кто ставит |
+|---|---|---|
+| 1 | Автоматическая проверка (новости, тесты) | Автоматика / скрипт |
+| 3 | Домашняя, самостоятельная | Преподаватель |
+| 5 | Контрольная, важное задание | Преподаватель |
+| 10 | «Весомая» оценка преподавателя (по умолчанию) | Преподаватель |
+
+**Взвешенный средний:** `Σ(оценка × вес) / Σ(вес)`, только числовые оценки.
+Пока `Σ(вес) < min_weight_for_final` — средний предварительный (помечается `≈`
+и серым). **Пример:** три `5` (вес 1) и одна `3` (вес 10) → взвешенный
+`(5+5+5+30)/(1+1+1+10) = 45/13 ≈ 3.46`.
+
+**Отображение:** в ячейке — оценка + бейдж веса (`5·¹`, `3·¹⁰`).
+Цвет бейджа: 1 — серый, 3–5 — оливковый, 10+ — тёмно-красный.
+
+**Примечания:**
+
+- **К оценке** — видит студент и преподаватель.
+- **К уроку (общие)** — видит вся группа.
+- **ДЗ** — тоже в примечании к уроку.
+- Правая панель: «Темы журнала» (уроки страницы) и «Примечания»
+  (по датам страницы).
+
+Студент видит только свои оценки и примечания к ним + общие примечания
+к уроку и ДЗ.
 
 ---
 
 ## Студенты
 
-Раздел `?page=admin&section=students`.
+Раздел `?page=admin&section=students`. **Отдельно от «👥 Пользователи»** —
+в «Пользователях» студентов нет.
 
 - Обязательные поля: Фамилия, Имя, Логин (совпадает с логином в Gogs),
   Пароль, Email. Необязательные: Отчество, VK, Telegram.
@@ -259,51 +304,52 @@ prikaz/
 
 ## Проекты и типы проектов
 
-### Старая модель
+### Старая модель (fallback)
 
-Глобальные фазы (`project_phases`), `projects.type` строкой
-(`original` / `fork` / …), `project_history.phase_id`. Используется только
-для проектов, у которых `projects.project_type_id IS NULL`.
+Глобальные фазы (`project_phases`), `projects.type` строкой,
+`project_history.phase_id`. Используется только для проектов с
+`projects.project_type_id IS NULL`.
 
-### Новая модель (v.0.1.9.25)
+### Новая модель (v.0.1.9.25+)
 
 Раздел `?page=admin&section=project_types`, пункт меню «🎓 Типы проектов».
 
 **Таблицы:**
 
 - `project_types`: `id`, `code` (UNIQUE, `[a-z][a-z0-9_-]{1,31}`), `name`,
-  `description`, `color`, `icon`, `gogs_owner`, `gogs_repo_prefix`,
-  `created_at`, `updated_at`.
+  `description`, `color`, `icon`, `gogs_owner`, `gogs_repo_prefix`.
 - `project_type_phases`: `id`, `project_type_id`, `ord`, `name`, `color`,
   `description`. UNIQUE `(project_type_id, ord)`.
-- `project_type_checks`: `id`, `project_type_id`, `checked_by`, `ok`,
-  `errors` (json), `warnings` (json), `details` (json), `checked_at`.
-- `projects.project_type_id` — nullable, FK → `project_types.id`.
-- `project_history.type_phase_id` — nullable, FK → `project_type_phases.id`.
+- `project_type_checks`: `project_type_id`, `checked_by`, `ok`,
+  `errors`/`warnings`/`details` (json), `checked_at`.
+- `projects.project_type_id` — nullable, FK.
+- `project_history.type_phase_id` — nullable, FK.
 
 **Действия на карточке типа:**
 
 | Кнопка | Что делает |
 |---|---|
-| Редактировать | обновляет запись; папку не трогает |
+| Редактировать | обновляет тип; файлы не трогает |
 | ➕ Добавить | создаёт тип + `projects/<code>/check.php` из `_templates/` |
-| ✅ Проверить | `include projects/<code>/check.php` с `$ctx`, ждёт массив `['ok','errors','warnings','details']`, пишет в `project_type_checks`, показывает flash |
-| ♻ Пересоздать папку | принудительно копирует `_templates/check.php` → `projects/<code>/check.php` (ручные правки теряются) |
-| Удалить | отказ, если есть проекты этого типа; папку не трогает |
+| ✅ Проверить | dry-run: прогоняет `check.php` и пишет результат в БД |
+| 🚀 Проверить и применить | прогоняет + делает merge/close/comment в Gogs |
+| ♻ Пересоздать папку | принудительно копирует эталон (правки теряются) |
+| Удалить | отказ, если к типу привязаны проекты; папка остаётся |
 
-**Фазы типа:** добавить / редактировать / удалить.
+**Фазы типа:** добавить / редактировать / удалить. Цвет фазы — из палитры
+10 цветов; новый цвет по умолчанию — следующий свободный от
+`count($phases)`.
 
 ### CI/CD-папка `projects/`
 
-- Закрыта `.htaccess` от прямого доступа.
-- `_templates/check.php` — эталон-заглушка с большим комментарием сверху:
-  структура `$ctx`, формат возврата, примеры Gogs API, TODO 1–5.
-- `_templates/config.json` — параметры проверки (справка, пока не читается).
-- `_templates/README.md` — инструкция: открыть `check.php` в панели хостинга
-  или скачать, скопировать в чат ИИ, описать, что проверять, получить
-  новый `check.php`, положить обратно, нажать «Проверить».
-- `projects/<code>/check.php` — рабочая копия. При редактировании типа
-  **не перезаписывается**. Принудительно — кнопкой «♻ Пересоздать папку».
+- `.htaccess` закрывает прямой доступ.
+- `_templates/check.php` — эталон-заглушка (структура `$ctx`, формат
+  возврата, примеры Gogs API, TODO 1–5).
+- `_templates/config.json` — параметры проверки (справка).
+- `_templates/README.md` — инструкция: скопировать `check.php` в чат ИИ,
+  описать проверки, получить реальный файл, положить обратно.
+- `projects/<code>/check.php` — рабочая копия. **При редактировании типа
+  не перезаписывается.** Принудительно — «♻ Пересоздать папку».
 
 **`$ctx`, который получает `check.php`:**
 
@@ -311,29 +357,35 @@ prikaz/
 $ctx['type']     = project_types row + gogs_owner / gogs_repo_prefix
 $ctx['gogs']     = ['base_url' => config, 'token' => config,
                     'owner'    => type.gogs_owner ?: config.gogs_owner]
-$ctx['projects'] = [{id,title,repo_url}, ...]  // неархивные проекта этого типа
+$ctx['projects'] = [{id,title,repo_url}, ...]
 $ctx['dir']      = путь к projects/<code>/check.php
+$ctx['apply']    = bool — если true, check.php может менять состояние в Gogs
 ```
 
 Файл должен **вернуть** массив:
 `['ok' => bool, 'errors' => [], 'warnings' => [], 'details' => []]`.
-Если вернул не массив — `project_type_check()` подставит
-`['ok'=>false, 'errors'=>['check.php не вернул массив.'], …]`.
 
-**Gogs API** — в шапке `check.php`: получение открытых PR, изменённых файлов,
-raw-содержимого, списка файлов ветки. Personal access token:
-Settings → Applications → Generate New Token, scope `repo` (read).
+**Пример готового `check.php` — «Новости ИТ и ИБ»** (10 проверок): имя PR
+или коммита содержит «Новости IT»/«Новости ИТ», ровно один новый `.md`
+в `Новости/<уч.год>/<номер_группы>/<4–8 латинских букв>.md`, имя файла
+не похоже на фамилию, есть `# Заголовок`, есть `https://…` с датой
+`ДД.ММ.ГГГГ` на следующей строке, комментарий ≥ 500 символов, есть
+суждение от первого лица (`я считаю`, `мне кажется`, `по-моему`, …),
+нет клише (`в современном мире`, `данная новость актуальна`, `нельзя
+не отметить`, `таким образом` в последнем абзаце), нет ПДн (ФИО с
+отчеством, e-mail, телефон), новость не старше 14 дней от даты PR.
+
+При `apply=1`: пройденный PR → squash merge + комментарий «✅ Принято»;
+непройденный → комментарий со списком нарушений + закрытие.
 
 ---
 
 ## Админка
 
 Разделы: «📖 Журнал», «📅 Учебный процесс» (годы, группы, предметы и темы),
-«🎓 Типы проектов», «📆 Расписание», «👥 Пользователи», «🎒 Студенты»,
-«👪 Родители», «📓 Уроки», «📋 Проекты», «📜 Аудит».
-
-Диспетчер `lib/views/admin.php`, секции `lib/views/admin/*.php`, партиалы
-`_topics_block.php` / `_ktp_block.php`. Общие `_styles.php`, `_scripts.php`.
+«🎓 Типы проектов», «📆 Расписание», «👥 Пользователи» (преподаватели,
+родители, администраторы — **без студентов**), «🎒 Студенты» (только личные
+дела студентов), «👪 Родители», «📓 Уроки», «📋 Проекты», «📜 Аудит».
 
 ---
 
@@ -350,7 +402,6 @@ Settings → Applications → Generate New Token, scope `repo` (read).
 | Аудит | `audit_log()` с IP |
 | БД | Вне webroot |
 | Буферы | `ob_start` + `ob_end_clean` |
-| `diag.php` | Одноразовый, удалять |
 | `projects/` | Закрыт `.htaccess` от прямого доступа |
 | CI/CD `check.php` | Выполняется через `include`; код пишет админ; Gogs-токен — в `config.php` |
 
@@ -369,49 +420,60 @@ Settings → Applications → Generate New Token, scope `repo` (read).
 - **`actions.php` не заканчивается на `?>`.** Перевод строки после — в буфер.
 - **Пароль админа — только `config.php`.** `password_verify` для админа
   не работает.
+- **Студенты — только в «🎒 Студенты».** `data.php` фильтрует `$adminUsers`
+  по `students.user_id` и роли `student`. `lib/actions/users.php` отклоняет
+  toggle/reset для студента.
 - **`actions.php`: `admin_project_type_` должен идти ДО `admin_project_`.**
   Иначе `str_starts_with` поймает `admin_project_` первым.
-- **`project_type_check()`** делает `include` через замыкание, `$ctx`
-  в области видимости. Файл должен вернуть массив. Пишет в
-  `project_type_checks` (`json_encode` для `errors`/`warnings`/`details`,
-  `JSON_UNESCAPED_UNICODE`).
-- **`project_type_render_files($typeId, $pdo, $overwrite=false)`** — если
-  `$overwrite=false` и файл уже есть, не перезаписывает. Используется
-  в `project_type_check()` для ленивого создания `check.php`.
-- **`projects/`** должен быть записан для PHP-FPM. Если папки нет —
-  `project_type_render_files` создаст её `mkdir(0775, true)`.
-- **`project_types_meta()`** — из БД, fallback на статические 5. Если таблицы
-  ещё нет — молча отдаст статический список.
-- **`project_phases_for($projectId)`** — если `projects.project_type_id > 0`,
-  берёт фазы типа (`project_type_phases.ord`). Иначе — глобальные
-  (`project_phases.num`). `project_current_phase_num()` и
-  `project_history_rows()` используют `COALESCE(pph.num, ptph.ord)`.
-- **`project_change_phase()`** — для проекта с типом пишет `type_phase_id`,
-  иначе `phase_id`. В `project_history` оба поля nullable.
+- **`project_type_check()`** передаёт `$ctx` в `include` через замыкание.
+  Файл должен вернуть массив. Пишет в `project_type_checks`
+  (`json_encode`, `JSON_UNESCAPED_UNICODE`).
+- **`project_type_render_files($typeId, $pdo, $overwrite=false)`** — без
+  `$overwrite` существующий `check.php` не перезаписывается.
+- **`projects/`** должен быть записан для PHP-FPM. Без неё — `mkdir(0775, true)`.
+- **`project_types_meta()`** — из БД, fallback на статические 5. Если
+  таблицы ещё нет — молча отдаёт статический список.
+- **`project_phases_for($projectId)`** — если `project_type_id > 0`,
+  берёт фазы типа. Иначе — глобальные. `COALESCE(pph.num, ptph.ord)`.
+- **`project_change_phase()`** — пишет `type_phase_id` (если тип задан)
+  или `phase_id`. В `project_history` оба поля nullable.
+- **`journal_marks.weight`** — INTEGER NOT NULL DEFAULT 10. Миграция
+  ALTER-ом для существующих БД. Старые оценки получают вес 10.
+- **`journal_mark_apply(... int $weight ...)`** — вес идёт **перед** `$userId`.
+  Проверка `$weight <= 0` → `default_grade_weight` из config.
+- **`aggregate_journal()`** — поддерживает обе модели (`grades` без веса
+  и `journal_marks` с весом). Взвешенный средний — только числовые оценки.
+- **`data.php`:** `perStudentSummary['avg']` — взвешенный средний (fallback
+  на сырой, если весов нет). `'weighted_avg'`, `'raw_avg'` — оба доступны.
+- **`min_weight_for_final`** — пока `Σ(вес) < этого` — средний
+  предварительный (`is_preliminary` в агрегатах).
 - **`diag.log`** — пишется `auth_attempt` в `dirname(PRIKAZ_DB_PATH)`.
   Удалять после отладки.
-- **`_student_profile_form.php`** — устаревший партиал, нигде не
-  подключается. Удалить.
+- **`_student_profile_form.php`** — устаревший партиал. Удалить.
 
 ---
 
 ## Открытые задачи
 
-1. Экспорт журнала — XLSX.
+1. Экспорт журнала — XLSX (с весами).
 2. Тесты — не написаны.
 3. Нагрузочные прогоны — до 100 параллельных.
 4. Ревизия наследия CRM — удалить.
 5. Печать расписания — не сделано.
 6. Кэш `ktp_lesson_blocks` — при 50+ предметах.
 7. Удалить `_student_profile_form.php`.
-8. Реальный `check.php` для типов проектов — эталон-заглушка уже стоит
-   в `_templates/check.php`, TODO 1–5 (PR, изменённые файлы, spec.md,
-   уникальность, `$details`). Нужно заполнить хотя бы для одного типа
-   и убедиться, что `gogs_base_url` / `gogs_token` / `gogs_owner` заполнены.
+8. Реальный `check.php` для остальных типов проектов (эталон-заглушка уже
+   стоит; «Новости ИТ и ИБ» — готов).
 9. `_templates/config.json` — пока справка, не читается из `check.php`.
-   Подключить, когда появится реальная проверка.
 10. AJAX для типов проектов — сейчас POST + `redirect()`. Можно перевести
-    на `ajaxSubmit()`, как темы и КТП.
+    на `ajaxSubmit()`.
+11. **Вес оценки в модалке новой модели** — сделано. **В старой модели
+    (`grades`)** — `weight` принимается, но в `teacher.php` / старой
+    модалке `lessons/grades` селектор пока не выведен. Если старая
+    модель где-то используется — довести UI.
+12. **Показ взвешенного среднего** в сводке учителя и в личном кабинете
+    студента (там сейчас только сырые оценки + бейджи весов). `data.php`
+    уже отдаёт `weighted_avg` — осталось вывести.
 
 ---
 

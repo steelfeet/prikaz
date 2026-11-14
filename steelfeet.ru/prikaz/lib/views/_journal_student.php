@@ -7,10 +7,15 @@ declare(strict_types=1);
  * Ожидает: $subj, $columns, $columnsDesc, $pageLessons, $dateInfo,
  * $page, $totalPagesOut, $startIdx, $endIdx, $kind, $subjectId.
  *
+ * В $dateInfo[$d] теперь есть 'weights' (параллельно 'marks').
+ *
  * Сверху — горизонтальная полоса дат с оценками (ASC). Ниже — пагинация.
- * Ниже — единый список «Темы журнала» в DESC (свежие сверху), где в каждой
- * карточке: дата + тема, под ними примечание к уроку, ДЗ и примечание
- * к своей оценке.
+ * Ниже — единый список «Темы журнала» в DESC (свежие сверху).
+ *
+ * Вес оценки показывается маленьким бейджем рядом с каждой оценкой:
+ *   --low  (1)   серый,
+ *   --mid  (3–5) оливковый,
+ *   --high (10+) тёмно-красный.
  */
 
 $today = date('Y-m-d');
@@ -19,6 +24,12 @@ $monthNames = [
     5 => 'Май', 6 => 'Июнь', 7 => 'Июль', 8 => 'Август',
     9 => 'Сентябрь', 10 => 'Октябрь', 11 => 'Ноябрь', 12 => 'Декабрь',
 ];
+
+$weightClass = static function (int $w): string {
+    if ($w >= 10) return 'pzk-weight--high';
+    if ($w >= 3)  return 'pzk-weight--mid';
+    return 'pzk-weight--low';
+};
 
 $monthGroups = [];
 foreach ($columns as $col) {
@@ -119,6 +130,23 @@ foreach ($columns as $col) {
 .sj-strip__cell[data-mark="н"],
 .sj-strip__cell[data-mark="ну"] { color: #6b7280; font-style: italic; }
 
+/* Бейдж веса */
+.pzk-weight {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 1px 3px;
+    border-radius: 3px;
+    margin-left: 2px;
+    vertical-align: super;
+    cursor: help;
+    font-variant-numeric: tabular-nums;
+}
+.pzk-weight--low  { background: rgba(107, 114, 128, 0.15); color: #4b5563; }
+.pzk-weight--mid  { background: rgba(139, 105, 20, 0.18);  color: #6b5010; }
+.pzk-weight--high { background: rgba(139, 26, 26, 0.18);   color: #8b1a1a; }
+
 .sj-pagination {
     display: flex;
     gap: 10px;
@@ -145,9 +173,6 @@ foreach ($columns as $col) {
     border-bottom: 1px solid #e8dcc0;
 }
 
-/* Карточка: дата + тема + примечания.
-   Заголовки (дата, тема) — прежние размеры.
-   Текст примечаний и бейдж оценки — крупнее. */
 .sj-entry {
     padding: 12px 16px;
     margin-bottom: 10px;
@@ -312,13 +337,15 @@ foreach ($columns as $col) {
                     <th class="sj-strip__label">Оценка</th>
                     <?php foreach ($columns as $col): ?>
                         <?php
-                            $info  = $dateInfo[$col['date']] ?? ['mark_display' => '', 'marks' => []];
+                            $info  = $dateInfo[$col['date']] ?? ['mark_display' => '', 'marks' => [], 'weights' => []];
                             $mDisp = (string) ($info['mark_display'] ?? '');
                             $first = (string) ($info['marks'][0] ?? '');
+                            $firstW = max(1, (int) ($info['weights'][0] ?? 10));
+                            $firstIsNum = (bool) preg_match('/^[2-5]/', $first);
                         ?>
                         <td class="sj-strip__cell <?= $mDisp !== '' ? 'is-filled' : '' ?>"
                             <?= $mDisp !== '' ? 'data-mark="' . e($first) . '"' : '' ?>>
-                            <?= $mDisp !== '' ? e($mDisp) : '—' ?>
+                            <?= $mDisp !== '' ? e($mDisp) : '—' ?><?php if ($firstIsNum): ?><span class="pzk-weight <?= $weightClass($firstW) ?>" title="Вес: <?= $firstW ?>"><?= $firstW ?></span><?php endif; ?>
                         </td>
                     <?php endforeach; ?>
                 </tr>
@@ -353,9 +380,12 @@ foreach ($columns as $col) {
     <?php foreach ($columnsDesc as $col): ?>
         <?php
             $info = $dateInfo[$col['date']] ?? [
-                'marks' => [], 'mark_display' => '', 'mark_note' => '',
+                'marks' => [], 'weights' => [], 'mark_display' => '', 'mark_note' => '',
                 'lesson_note' => '', 'homework' => '',
             ];
+            $firstMark = (string) ($info['marks'][0] ?? '');
+            $firstWeight = max(1, (int) ($info['weights'][0] ?? 10));
+            $firstIsNum = (bool) preg_match('/^[2-5]/', $firstMark);
         ?>
         <div class="sj-entry">
             <div class="sj-entry__head">
@@ -380,6 +410,9 @@ foreach ($columns as $col) {
                     <div class="sj-entry__note-label">
                         <?php if ($info['mark_display'] !== ''): ?>
                             <span class="sj-entry__mark-badge"><?= e($info['mark_display']) ?></span>
+                            <?php if ($firstIsNum): ?>
+                                <span class="pzk-weight <?= $weightClass($firstWeight) ?>" title="Вес: <?= $firstWeight ?>"><?= $firstWeight ?></span>
+                            <?php endif; ?>
                         <?php endif; ?>
                         Примечание к оценке
                     </div>

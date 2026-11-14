@@ -61,6 +61,15 @@ $journalKind = (string) ($_GET['kind'] ?? 'group');
 if (!in_array($journalKind, ['group', 'sub'], true)) $journalKind = 'group';
 
 $journalPage = (int) ($_GET['p'] ?? -1);
+
+// ===== Дефолтный вес =====
+$defaultWeight = (int) (prikaz_config()['default_grade_weight'] ?? 10);
+$weightOptions = [
+    10 => '10 — весомая оценка преподавателя (по умолчанию)',
+    5  => '5 — контрольная, важное задание',
+    3  => '3 — самостоятельная, домашняя',
+    1  => '1 — автоматическая проверка (новости, тесты)',
+];
 ?>
 <section class="panel">
     <div class="panel__head">
@@ -68,7 +77,7 @@ $journalPage = (int) ($_GET['p'] ?? -1);
             <h2 class="panel__title">Журнал</h2>
             <p class="panel__subtitle">
                 Столбцы — даты уроков по КТП, строки — студенты группы.
-                <?= $isTeacher ? 'Клик по ячейке — оценка. Клик по дате — примечание к уроку и ДЗ.' : 'Клик по дате — примечание к уроку и домашнее задание.' ?>
+                <?= $isTeacher ? 'Клик по ячейке — оценка и её вес. Клик по дате — примечание к уроку и ДЗ.' : 'Клик по дате — примечание к уроку и домашнее задание.' ?>
             </p>
         </div>
     </div>
@@ -147,6 +156,64 @@ $journalPage = (int) ($_GET['p'] ?? -1);
     <?php endif; ?>
 </section>
 
+<style>
+/* ===== Вес в модалке ===== */
+.journal-modal__weights {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+.journal-modal__weights-label {
+    font-size: 0.82rem;
+    color: #666;
+    margin-right: 4px;
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+}
+.journal-weight-btn {
+    padding: 5px 12px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: #fff;
+    color: #2d2d2d;
+    cursor: pointer;
+    border-radius: 2px;
+    font-variant-numeric: tabular-nums;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.journal-weight-btn:hover {
+    background: rgba(139, 105, 20, 0.06);
+    border-color: rgba(139, 105, 20, 0.4);
+}
+.journal-weight-btn.is-active {
+    background: #8b6914;
+    color: #fff;
+    border-color: #8b6914;
+}
+
+/* ===== Бейдж веса в ячейке ===== */
+.pzk-weight {
+    display: inline-block;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 3px;
+    margin-left: 3px;
+    vertical-align: super;
+    cursor: help;
+    font-variant-numeric: tabular-nums;
+}
+.pzk-weight--low  { background: rgba(107, 114, 128, 0.15); color: #4b5563; }
+.pzk-weight--mid  { background: rgba(139, 105, 20, 0.18);  color: #6b5010; }
+.pzk-weight--high { background: rgba(139, 26, 26, 0.18);   color: #8b1a1a; }
+</style>
+
 <?php if ($isTeacher && $journalSubjectId > 0): ?>
 <div class="journal-modal" id="journal-mark-modal" aria-hidden="true">
     <div class="journal-modal__backdrop" data-journal-close></div>
@@ -159,6 +226,15 @@ $journalPage = (int) ($_GET['p'] ?? -1);
             <button type="button" class="journal-modal__close" data-journal-close aria-label="Закрыть">×</button>
         </header>
         <div class="journal-modal__body">
+            <div class="journal-modal__weights" id="jm-weights">
+                <span class="journal-modal__weights-label">Вес оценки:</span>
+                <?php foreach ($weightOptions as $w => $title): ?>
+                    <button type="button"
+                            class="journal-weight-btn <?= $w === $defaultWeight ? 'is-active' : '' ?>"
+                            data-weight="<?= (int) $w ?>"
+                            title="<?= e($title) ?>"><?= (int) $w ?></button>
+                <?php endforeach; ?>
+            </div>
             <div class="journal-modal__marks" id="jm-marks">
                 <?php foreach (['5','5-','4','4-','3','3-','2','н','ну'] as $m): ?>
                     <button type="button" class="journal-mark-btn" data-mark="<?= e($m) ?>"><?= e($m) ?></button>
@@ -225,7 +301,9 @@ $journalPage = (int) ($_GET['p'] ?? -1);
         return el ? el.value : '';
     }
 
-    // ===== Вкладки правой панели — делегирование (переживают innerHTML) =====
+    var DEFAULT_WEIGHT = <?= (int) $defaultWeight ?>;
+
+    // ===== Вкладки правой панели — делегирование =====
     document.addEventListener('click', function (e) {
         var tab = e.target.closest('[data-side-tab]');
         if (!tab) return;
@@ -242,7 +320,7 @@ $journalPage = (int) ($_GET['p'] ?? -1);
         });
     });
 
-    // ===== Пагинация — делегирование (переживает innerHTML) =====
+    // ===== Пагинация — делегирование =====
     document.addEventListener('click', function (e) {
         var link = e.target.closest('.journal-pagination a[data-p]');
         if (!link) return;
@@ -267,7 +345,9 @@ $journalPage = (int) ($_GET['p'] ?? -1);
     var markTitle    = document.getElementById('jm-title');
     var markSubtitle = document.getElementById('jm-subtitle');
     var markBtns     = document.querySelectorAll('#jm-marks .journal-mark-btn');
+    var weightBtns   = document.querySelectorAll('#jm-weights .journal-weight-btn');
     var currentMark  = '';
+    var currentWeight = DEFAULT_WEIGHT;
 
     var lessonModal = document.getElementById('journal-lesson-modal');
     var lessonIn = {
@@ -313,6 +393,21 @@ $journalPage = (int) ($_GET['p'] ?? -1);
         });
     });
 
+    function syncWeightButtons(weight) {
+        weight = parseInt(weight, 10);
+        if (!weight || weight < 1) weight = DEFAULT_WEIGHT;
+        currentWeight = weight;
+        weightBtns.forEach(function (b) {
+            var w = parseInt(b.getAttribute('data-weight'), 10) || 0;
+            b.classList.toggle('is-active', w === weight);
+        });
+    }
+    weightBtns.forEach(function (b) {
+        b.addEventListener('click', function () {
+            syncWeightButtons(b.getAttribute('data-weight'));
+        });
+    });
+
     function bindCells() {
         container.querySelectorAll('.journal-cell[data-student]').forEach(function (td) {
             td.addEventListener('click', function () {
@@ -327,6 +422,7 @@ $journalPage = (int) ($_GET['p'] ?? -1);
                 markSubtitle.textContent = (td.getAttribute('data-date-label') || '') + ' · ' + (td.getAttribute('data-topic') || '');
 
                 syncMarkButtons(td.getAttribute('data-mark') || '');
+                syncWeightButtons(td.getAttribute('data-weight') || DEFAULT_WEIGHT);
                 openModal(markModal);
                 markIn.note.focus();
             });
@@ -368,6 +464,7 @@ $journalPage = (int) ($_GET['p'] ?? -1);
         fd.append('date',       markIn.date.value);
         fd.append('kind',       markIn.kind.value);
         fd.append('mark',       currentMark);
+        fd.append('weight',     String(currentWeight));
         fd.append('note',       markIn.note.value);
         fd.append('page',       markIn.page.value);
 

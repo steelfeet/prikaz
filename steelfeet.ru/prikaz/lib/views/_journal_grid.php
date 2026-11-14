@@ -6,12 +6,18 @@ declare(strict_types=1);
  *
  * Ожидает: $subj, $columns, $futureFrom, $students, $marks, $lessonNotes,
  * $isTeacher, $page, $totalPagesOut, $startIdx, $endIdx, $kind, $subjectId,
- * $allLessons.
+ * $allLessons, $defaultWeight.
  *
  * Правая панель — две вкладки:
  *   - «Темы журнала» (открыта по умолчанию): уроки только текущей страницы;
  *   - «Примечания»: только примечания к датам текущей страницы, по одной
  *     карточке на дату (общее примечание к уроку + примечания к оценкам).
+ *
+ * Каждая оценка несёт вес (1 / 3 / 5 / 10). В сетке и в правой панели
+ * вес показывается маленьким бейджем рядом с оценкой:
+ *   --low  (1)   серый,
+ *   --mid  (3–5) оливковый,
+ *   --high (10+) тёмно-красный.
  */
 
 static $journalStylesRendered = false;
@@ -170,6 +176,24 @@ if (!$journalStylesRendered):
 .journal-mark--5minus  { color: #15803d; }
 .journal-mark--4minus  { color: #1e40af; }
 .journal-mark--3minus  { color: #92400e; }
+
+/* Бейдж веса оценки */
+.pzk-weight {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 1px 3px;
+    border-radius: 3px;
+    margin-left: 2px;
+    vertical-align: super;
+    cursor: help;
+    font-variant-numeric: tabular-nums;
+}
+.pzk-weight--low  { background: rgba(107, 114, 128, 0.15); color: #4b5563; }
+.pzk-weight--mid  { background: rgba(139, 105, 20, 0.18);  color: #6b5010; }
+.pzk-weight--high { background: rgba(139, 26, 26, 0.18);   color: #8b1a1a; }
+
 .journal-empty {
     padding: 20px;
     text-align: center;
@@ -445,6 +469,44 @@ if (!$journalStylesRendered):
 }
 .journal-mark-btn--clear { color: #999; font-size: 0.9rem; }
 
+.journal-modal__weights {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+.journal-modal__weights-label {
+    font-family: 'Cormorant Garamond', 'Inter', serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #6b5010;
+    letter-spacing: 0.03em;
+    margin-right: 4px;
+}
+.journal-weight-btn {
+    padding: 4px 12px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: #fff;
+    color: #2d2d2d;
+    cursor: pointer;
+    border-radius: 2px;
+    font-variant-numeric: tabular-nums;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.journal-weight-btn:hover {
+    background: rgba(139, 105, 20, 0.06);
+    border-color: rgba(139, 105, 20, 0.4);
+}
+.journal-weight-btn.is-active {
+    background: #8b6914;
+    color: #fff;
+    border-color: #8b6914;
+}
+
 .journal-modal .pzk-field {
     display: flex;
     flex-direction: column;
@@ -538,6 +600,7 @@ if (!$journalStylesRendered):
 <?php endif; ?>
 
 <?php
+    $defaultWeight = isset($defaultWeight) ? (int) $defaultWeight : 10;
     $today      = date('Y-m-d');
     $monthNames = [
         1 => 'Январь', 2 => 'Февраль', 3 => 'Март', 4 => 'Апрель',
@@ -604,7 +667,7 @@ if (!$journalStylesRendered):
 
     if (isset($lessonNotes[$kind]) && is_array($lessonNotes[$kind])) {
         foreach ($lessonNotes[$kind] as $d => $ln) {
-            if (!isset($notesByDate[$d])) continue;               // фильтр по странице
+            if (!isset($notesByDate[$d])) continue;
             $note = (string) ($ln['note'] ?? '');
             $hw   = (string) ($ln['homework'] ?? '');
             if ($note === '' && $hw === '') continue;
@@ -616,11 +679,12 @@ if (!$journalStylesRendered):
         if (!isset($visibleSids[(int) $sid])) continue;
         $byDate = $byKind[$kind] ?? [];
         foreach ($byDate as $d => $m) {
-            if (!isset($notesByDate[$d])) continue;               // фильтр по странице
+            if (!isset($notesByDate[$d])) continue;
             $note = (string) ($m['note'] ?? '');
             if ($note === '') continue;
             $notesByDate[$d]['marks'][] = [
                 'mark'    => (string) ($m['mark'] ?? ''),
+                'weight'  => max(1, (int) ($m['weight'] ?? $defaultWeight)),
                 'student' => $studentNameById[(int) $sid] ?? '',
                 'note'    => $note,
             ];
@@ -636,6 +700,13 @@ if (!$journalStylesRendered):
         return $row['lesson'] !== null || $row['marks'] !== [];
     });
     ksort($notesByDate);
+
+    // Хелпер: класс бейджа веса
+    $weightClass = static function (int $w): string {
+        if ($w >= 10) return 'pzk-weight--high';
+        if ($w >= 3)  return 'pzk-weight--mid';
+        return 'pzk-weight--low';
+    };
 ?>
 
 <div class="journal-layout">
@@ -698,9 +769,10 @@ if (!$journalStylesRendered):
                             </th>
                             <?php foreach ($columns as $ci => $col): ?>
                                 <?php
-                                    $m       = $marks[$sid][$kind][$col['date']] ?? ['mark'=>'', 'note'=>''];
+                                    $m       = $marks[$sid][$kind][$col['date']] ?? ['mark'=>'', 'note'=>'', 'weight'=>$defaultWeight];
                                     $mark    = (string) ($m['mark'] ?? '');
                                     $note    = (string) ($m['note'] ?? '');
+                                    $weight  = max(1, (int) ($m['weight'] ?? $defaultWeight));
                                     $isFuture = $ci >= $futureFrom;
                                     $cls = 'journal-cell';
                                     if ($isFuture) $cls .= ' journal-cell--future';
@@ -709,6 +781,8 @@ if (!$journalStylesRendered):
                                     $markClass = 'journal-mark--' . str_replace('-', 'minus', $mark);
                                     $dateFull = date('d.m.Y', strtotime($col['date']));
                                     $topicsStr = implode('; ', $col['topics']);
+                                    $wCls = $weightClass($weight);
+                                    $isNumeric = (bool) preg_match('/^[2-5]/', $mark);
                                 ?>
                                 <td class="<?= $cls ?>"
                                     <?php if ($isTeacher): ?>
@@ -722,10 +796,11 @@ if (!$journalStylesRendered):
                                         data-topic="<?= e($topicsStr) ?>"
                                         data-mark="<?= e($mark) ?>"
                                         data-note="<?= e($note) ?>"
+                                        data-weight="<?= $weight ?>"
                                     <?php endif; ?>
                                 >
                                     <?php if ($mark !== ''): ?>
-                                        <span class="journal-mark <?= e($markClass) ?>"><?= e($mark) ?></span>
+                                        <span class="journal-mark <?= e($markClass) ?>"><?= e($mark) ?><?php if ($isNumeric): ?><span class="pzk-weight <?= $wCls ?>" title="Вес: <?= $weight ?>"><?= $weight ?></span><?php endif; ?></span>
                                     <?php endif; ?>
                                     <?php if ($note !== '' && !$isTeacher): ?>
                                         <span class="journal-cell__note-mark" title="<?= e($note) ?>">✎</span>
@@ -798,10 +873,15 @@ if (!$journalStylesRendered):
                             <div class="journal-note-card__section journal-note-card__section--marks">
                                 <div class="journal-note-card__section-label">Примечания к оценкам</div>
                                 <?php foreach ($nd['marks'] as $mn): ?>
+                                    <?php
+                                        $mnWeight = max(1, (int) ($mn['weight'] ?? $defaultWeight));
+                                        $mnWCls   = $weightClass($mnWeight);
+                                        $mnIsNum  = (bool) preg_match('/^[2-5]/', (string) $mn['mark']);
+                                    ?>
                                     <div class="journal-note-card__mark-row">
                                         <div class="journal-note-card__mark-head">
                                             <?php if ($mn['mark'] !== ''): ?>
-                                                <span class="journal-note-card__mark-value"><?= e($mn['mark']) ?></span>
+                                                <span class="journal-note-card__mark-value"><?= e($mn['mark']) ?><?php if ($mnIsNum): ?><span class="pzk-weight <?= $mnWCls ?>" title="Вес: <?= $mnWeight ?>"><?= $mnWeight ?></span><?php endif; ?></span>
                                             <?php endif; ?>
                                             <span class="journal-note-card__student"><?= e($mn['student']) ?></span>
                                         </div>
