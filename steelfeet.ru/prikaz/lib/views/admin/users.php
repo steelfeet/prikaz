@@ -5,7 +5,12 @@ declare(strict_types=1);
     <div class="panel__head">
         <div>
             <h2 class="panel__title">Пользователи</h2>
-            <p class="panel__subtitle">Создание, деактивация и сброс паролей. Регистрация — только через админку.</p>
+            <p class="panel__subtitle">
+                Преподаватели, родители и администраторы. Регистрация — только через админку.
+                <strong>Студенты</strong> создаются и редактируются в разделе
+                <a href="?page=admin&amp;section=students">🎒 Студенты</a> — там у них личное
+                дело, группа, логин для Gogs и личный кабинет.
+            </p>
         </div>
         <a href="#add-user" class="pzk-btn pzk-btn--primary" data-open-details>
             ➕ Добавить
@@ -26,45 +31,54 @@ declare(strict_types=1);
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($adminUsers as $u): ?>
+                <?php if ($adminUsers === []): ?>
                     <tr>
-                        <td><?= (int) $u['id'] ?></td>
-                        <td><strong><?= e($u['login']) ?></strong></td>
-                        <td><?= e($u['full_name']) ?></td>
-                        <td><?= e((string) ($u['roles'] ?? '—')) ?></td>
-                        <td>
-                            <?php if ((int) $u['is_active'] === 1): ?>
-                                <span class="pzk-status pzk-status--active">активен</span>
-                            <?php else: ?>
-                                <span class="pzk-status pzk-status--inactive">заблокирован</span>
-                            <?php endif; ?>
-                        </td>
-                        <td><?= e((string) ($u['last_login_at'] ?? '—')) ?></td>
-                        <td class="pzk-table__actions">
-                            <?php if ((int) $u['id'] !== (int) $currentUser['id']): ?>
-                                <form method="post" action="index.php?action=admin_user_toggle">
-                                    <?= csrf_field() ?>
-                                    <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
-                                    <button type="submit" class="pzk-btn pzk-btn--sm">
-                                        <?= (int) $u['is_active'] === 1 ? 'Заблокировать' : 'Разблокировать' ?>
-                                    </button>
-                                </form>
-                            <?php endif; ?>
-                            <details class="pzk-row-details">
-                                <summary class="pzk-btn pzk-btn--sm">Сбросить пароль</summary>
-                                <form method="post" action="index.php?action=admin_user_reset_password"
-                                      class="pzk-row-details__form" autocomplete="off">
-                                    <?= csrf_field() ?>
-                                    <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
-                                    <input type="text" name="password" placeholder="Новый пароль"
-                                           required minlength="<?= PRIKAZ_PASSWORD_MIN ?>"
-                                           autocomplete="new-password" class="pzk-field__input">
-                                    <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">ОК</button>
-                                </form>
-                            </details>
+                        <td colspan="7" class="pzk-table__empty">
+                            Пользователей нет. Преподаватели, родители и администраторы
+                            появятся здесь после создания.
                         </td>
                     </tr>
-                <?php endforeach; ?>
+                <?php else: ?>
+                    <?php foreach ($adminUsers as $u): ?>
+                        <tr>
+                            <td><?= (int) $u['id'] ?></td>
+                            <td><strong><?= e($u['login']) ?></strong></td>
+                            <td><?= e($u['full_name']) ?></td>
+                            <td><?= e((string) ($u['roles'] ?? '—')) ?></td>
+                            <td>
+                                <?php if ((int) $u['is_active'] === 1): ?>
+                                    <span class="pzk-status pzk-status--active">активен</span>
+                                <?php else: ?>
+                                    <span class="pzk-status pzk-status--inactive">заблокирован</span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?= e((string) ($u['last_login_at'] ?? '—')) ?></td>
+                            <td class="pzk-table__actions">
+                                <?php if ((int) $u['id'] !== (int) $currentUser['id']): ?>
+                                    <form method="post" action="index.php?action=admin_user_toggle">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
+                                        <button type="submit" class="pzk-btn pzk-btn--sm">
+                                            <?= (int) $u['is_active'] === 1 ? 'Заблокировать' : 'Разблокировать' ?>
+                                        </button>
+                                    </form>
+                                <?php endif; ?>
+                                <details class="pzk-row-details">
+                                    <summary class="pzk-btn pzk-btn--sm">Сбросить пароль</summary>
+                                    <form method="post" action="index.php?action=admin_user_reset_password"
+                                          class="pzk-row-details__form" autocomplete="off">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
+                                        <input type="text" name="password" placeholder="Новый пароль"
+                                               required minlength="<?= PRIKAZ_PASSWORD_MIN ?>"
+                                               autocomplete="new-password" class="pzk-field__input">
+                                        <button type="submit" class="pzk-btn pzk-btn--sm pzk-btn--primary">ОК</button>
+                                    </form>
+                                </details>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </tbody>
         </table>
     </div>
@@ -77,8 +91,9 @@ declare(strict_types=1);
             <div>
                 <h3 class="pzk-form__title">Новый пользователь</h3>
                 <p class="pzk-form__hint">
-                    Логин — латиница, цифры, точка, дефис. Передайте пользователю логин и пароль:
-                    после первого входа он сможет сменить пароль в «Профиле».
+                    Преподаватель, родитель или администратор. <strong>Студентов</strong>
+                    создавайте в разделе <a href="?page=admin&amp;section=students">🎒 Студенты</a> —
+                    там автоматически появится личное дело, группа и связка с Gogs.
                 </p>
             </div>
             <div class="pzk-form__grid">
@@ -102,22 +117,10 @@ declare(strict_types=1);
                 <label class="pzk-field">
                     <span class="pzk-field__label">Роль</span>
                     <select class="pzk-field__input" name="role" required>
-                        <option value="student">Студент</option>
                         <option value="teacher">Преподаватель</option>
                         <option value="parent">Родитель</option>
                         <option value="admin">Администратор</option>
                     </select>
-                </label>
-                <label class="pzk-field">
-                    <span class="pzk-field__label">Группа (для студента)</span>
-                    <input class="pzk-field__input" type="text" name="group_name"
-                           placeholder="46" autocomplete="off">
-                </label>
-                <label class="pzk-field">
-                    <span class="pzk-field__label">Псевдоним (для студента)</span>
-                    <input class="pzk-field__input" type="text" name="alias"
-                           placeholder="s-46-01" autocomplete="off"
-                           autocapitalize="off" spellcheck="false">
                 </label>
                 <label class="pzk-field">
                     <span class="pzk-field__label">Временный пароль</span>

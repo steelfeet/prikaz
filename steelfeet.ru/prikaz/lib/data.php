@@ -198,11 +198,22 @@ $adminScheduleSubjects = [];
 $adminScheduleEntries = [];
 
 if ($viewRole === 'admin') {
+    // ===== Пользователи (без студентов) =====
+    // Студенты живут в таблице `students` (students.user_id → users.id),
+    // а также могут иметь роль `student`. Исключаем и тех, и других.
+    // Управление студентами — только в разделе «🎒 Студенты».
     $adminUsers = $pdo->query(
         "SELECT u.*, GROUP_CONCAT(r.code, ',') AS roles
          FROM users u
          LEFT JOIN user_roles ur ON ur.user_id = u.id
          LEFT JOIN roles r ON r.id = ur.role_id
+         WHERE u.id NOT IN (SELECT user_id FROM students)
+           AND NOT EXISTS (
+               SELECT 1
+               FROM user_roles ur2
+               JOIN roles r2 ON r2.id = ur2.role_id
+               WHERE ur2.user_id = u.id AND r2.code = 'student'
+           )
          GROUP BY u.id ORDER BY u.id"
     )->fetchAll();
 
