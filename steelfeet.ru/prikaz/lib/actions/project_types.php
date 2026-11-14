@@ -81,22 +81,24 @@ if ($action === 'admin_project_type_regen_folder') {
 // ===== ТИП ПРОЕКТА: проверка =====
 if ($action === 'admin_project_type_check') {
     if (!in_array('admin', $currentUser['roles'], true)) { http_response_code(403); exit('Доступ запрещён'); }
-    $id = (int) ($_POST['id'] ?? 0);
+    $id     = (int) ($_POST['id'] ?? 0);
+    $apply  = ((string) ($_POST['apply'] ?? '0')) === '1';
     $backUrl = 'index.php?page=admin&section=project_types';
 
     try {
-        $res = project_type_check($id, (int) $currentUser['id'], $pdo);
+        $res = project_type_check($id, (int) $currentUser['id'], $pdo, $apply);
         audit_log((int) $currentUser['id'], 'project_type_check', 'project_type', $id,
             'ok=' . ($res['ok'] ? '1' : '0')
+            . ' apply=' . ($apply ? '1' : '0')
             . ' errors=' . count($res['errors'])
             . ' warnings=' . count($res['warnings']));
 
         if ($res['ok']) {
-            $msg = 'Проверка пройдена.';
+            $msg = $apply ? 'Проверка пройдена, действия применены.' : 'Проверка пройдена (dry-run).';
             if ($res['details'] !== []) $msg .= ' ' . implode(' ', array_map('strval', $res['details']));
             flash_set('success', $msg);
         } else {
-            $msg = 'Проверка не пройдена.';
+            $msg = $apply ? 'Проверка не пройдена, действия применены.' : 'Проверка не пройдена (dry-run).';
             if ($res['errors'] !== []) {
                 $msg .= ' ' . implode(' ', array_map('strval', $res['errors']));
             }

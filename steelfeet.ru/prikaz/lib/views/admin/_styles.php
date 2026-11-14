@@ -1077,4 +1077,16 @@ declare(strict_types=1);
     border-color: #1a1a1a;
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2), 0 0 0 2px #fff;
 }
+
+/* ===== Форма проверки типа проекта ===== */
+.pzk-ptype__check-form {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    margin: 0;
+}
+.pzk-ptype__check-form .pzk-btn {
+    margin: 0;
+}
 </style>

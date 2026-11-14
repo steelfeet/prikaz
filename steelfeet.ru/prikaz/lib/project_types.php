@@ -276,9 +276,12 @@ function project_type_render_files(int $typeId, ?PDO $pdo = null, bool $overwrit
  * Если проверка падает или возвращает неверный формат — возвращаем ok=false
  * с текстом ошибки.
  *
+ * @param bool $apply Если true — check.php может применять действия (merge/close/comment).
+ *                    Если false — dry-run, только проверка и отчёт.
+ *
  * @return array{ok:bool, errors:list<string>, warnings:list<string>, details:list<string>}
  */
-function project_type_check(int $typeId, int $byUserId, ?PDO $pdo = null): array
+function project_type_check(int $typeId, int $byUserId, ?PDO $pdo = null, bool $apply = false): array
 {
     if ($pdo === null) $pdo = db();
 
@@ -313,6 +316,7 @@ function project_type_check(int $typeId, int $byUserId, ?PDO $pdo = null): array
         ],
         'projects' => [],
         'dir'      => $dir,
+        'apply'    => $apply,
     ];
 
     // Проекты этого типа (заготовка: реальную проверку пишет админ).
@@ -331,7 +335,7 @@ function project_type_check(int $typeId, int $byUserId, ?PDO $pdo = null): array
 
     $result = null;
     try {
-        $returned = (static function (string $__file, array $__ctx) {
+        $returned = (static function (string $__file, array $ctx) {
             return include $__file;
         })($file, $ctx);
         if (is_array($returned)) {

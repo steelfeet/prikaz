@@ -152,12 +152,20 @@ $renderPhaseColor = static function (string $name, string $value): string {
                             </form>
                         </details>
 
-                        <form method="post" action="index.php?action=admin_project_type_check" style="margin:0;">
+                        <form method="post" action="index.php?action=admin_project_type_check"
+                              class="pzk-ptype__check-form">
                             <?= csrf_field() ?>
                             <input type="hidden" name="id" value="<?= $tid ?>">
-                            <button type="submit" class="pzk-btn pzk-btn--sm"
-                                    title="Запустить projects/<?= e((string) $t['code']) ?>/check.php">
+                            <button type="submit" name="apply" value="0"
+                                    class="pzk-btn pzk-btn--sm"
+                                    title="Прогнать проверки, ничего не менять в Gogs (dry-run)">
                                 ✅ Проверить
+                            </button>
+                            <button type="submit" name="apply" value="1"
+                                    class="pzk-btn pzk-btn--sm pzk-btn--primary"
+                                    title="Прогнать проверки и применить: пройденные PR принять (squash), непройденные закрыть с комментарием"
+                                    onclick="return confirm('Применить действия? Пройденные PR будут приняты (squash merge), непройденные — закрыты с комментарием.');">
+                                🚀 Проверить и применить
                             </button>
                         </form>
 
@@ -468,7 +476,6 @@ $renderPhaseColor = static function (string $name, string $value): string {
             });
         });
 
-        // Начальная синхронизация подсветки
         paint(text.value, true);
     });
 })();
